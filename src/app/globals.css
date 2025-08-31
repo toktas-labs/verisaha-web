@@ -1,0 +1,95 @@
+/* src/app/globals.css  — Tailwind v4 */
+@import "tailwindcss";
+@plugin "tailwindcss-animate"; /* shadcn animasyonları kullanıyorsan kalsın */
+
+/* Tasarım token’ları (v4: @theme ile) */
+@theme {
+  --color-brand-navy: #1B3B5F;
+  --color-brand-teal: #2FA89B;
+  --color-brand-off: #F7FAF9;
+  --color-brand-text: #0F172A;
+  --radius: 10px;
+}
+
+/* Işık/Koyu temel değişkenler + shadcn token’ları (RGB değerler) */
+:root {
+  /* mevcutlar */
+  --background: 255 255 255;
+  --foreground: 15 23 42;
+  --border: 226 232 240;
+
+  /* shadcn/ui eklemeleri */
+  --card: 255 255 255;
+  --card-foreground: 15 23 42;
+
+  --popover: 255 255 255;
+  --popover-foreground: 15 23 42;
+
+  /* primary’yi brand navy olarak belirledik */
+  --primary: 27 59 95;
+  --primary-foreground: 255 255 255;
+
+  /* secondary’yi brand off ile eşledik */
+  --secondary: 247 250 249;
+  --secondary-foreground: 27 59 95;
+
+  --muted: 241 245 249;
+  --muted-foreground: 100 116 139;
+
+  /* accent’i brand teal yaptık */
+  --accent: 47 168 155;
+  --accent-foreground: 255 255 255;
+
+  --destructive: 239 68 68;
+  --destructive-foreground: 255 255 255;
+
+  /* formlar için */
+  --input: 226 232 240;
+  --ring: 47 168 155; /* odak halkası: teal */
+}
+
+.dark {
+  --background: 15 23 42;
+  --foreground: 248 250 252;
+  --border: 51 65 85;
+
+  --card: 15 23 42;
+  --card-foreground: 248 250 252;
+
+  --popover: 15 23 42;
+  --popover-foreground: 248 250 252;
+
+  /* koyu temada primary’yi teal yapıp foreground’u siyaha çektik (yüksek kontrast) */
+  --primary: 47 168 155;
+  --primary-foreground: 0 0 0;
+
+  --secondary: 30 41 59;
+  --secondary-foreground: 248 250 252;
+
+  --muted: 30 41 59;
+  --muted-foreground: 148 163 184;
+
+  --accent: 27 59 95;
+  --accent-foreground: 255 255 255;
+
+  --destructive: 239 68 68;
+  --destructive-foreground: 255 255 255;
+
+  --input: 51 65 85;
+  --ring: 47 168 155;
+}
+
+/* Base reset */
+@layer base {
+  /* sadece border rengini ayarla (performans) */
+  * { border-color: rgb(var(--border)); }
+
+  body {
+    @apply bg-[rgb(var(--background))] text-[rgb(var(--foreground))];
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html, body { max-width: 100vw; overflow-x: hidden; }
+  a { text-decoration: none; }
+}
