@@ -22,7 +22,7 @@ export default function Hero() {
         </h1>
 
         <p className="max-w-2xl text-white/80 md:text-lg leading-relaxed mt-6">
-          Akış, seviye, yoğunluk ve batch süreçlerinizi gerçek zamanlı takip edin. <br />
+          Tüm proses parametrelerinizi (akış, seviye, sıcaklık vb.) ve batch süreçlerinizi gerçek zamanlı takip edin. <br />
           Modbus/S7 entegrasyonları ve raporlama otomasyonu ile üretimi hızlandırın.
         </p>
 
