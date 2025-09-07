@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/sheet";
 import { Menu, ChevronDown, Search } from "lucide-react";
 
 const navLink =
@@ -179,41 +179,63 @@ export default function Navbar() {
 	    <div>
 	      <span className="font-medium text-brand-navy">Çözümler</span>
 	      <div className="ml-4 mt-2 flex flex-col gap-2 text-sm text-slate-700">
-	        <Link href="/cozumler/olcum-izleme">Ölçüm İzleme</Link>
-	        <Link href="/cozumler/proje-bazli">Proje Bazlı Çözümler</Link>
-	        <Link href="/cozumler/endustriyel-otomasyon">Endüstriyel Otomasyon</Link>
-	        <Link href="/cozumler/raporlama">Raporlama</Link>
-	        <Link href="/cozumler/uzaktan-izleme">Uzaktan İzleme</Link>
-	        <Link href="/cozumler/danismanlik">Danışmanlık</Link>
+	        <SheetClose asChild>
+	          <Link href="/cozumler/olcum-izleme">Ölçüm İzleme</Link>
+	        </SheetClose>
+	        <SheetClose asChild>
+	          <Link href="/cozumler/proje-bazli">Proje Bazlı Çözümler</Link>
+	        </SheetClose>
+	        <SheetClose asChild>
+	          <Link href="/cozumler/endustriyel-otomasyon">Endüstriyel Otomasyon</Link>
+	        </SheetClose>
+	        <SheetClose asChild>
+	          <Link href="/cozumler/raporlama">Raporlama</Link>
+	        </SheetClose>
+	        <SheetClose asChild>
+	          <Link href="/cozumler/uzaktan-izleme">Uzaktan İzleme</Link>
+	        </SheetClose>
+	        <SheetClose asChild>
+	          <Link href="/cozumler/danismanlik">Danışmanlık</Link>
+	        </SheetClose>
 	      </div>
 	    </div>
 
 	    <div>
 	      <span className="font-medium text-brand-navy">Sektörler</span>
 	      <div className="ml-4 mt-2 flex flex-col gap-2 text-sm text-slate-700">
-	        <Link href="/sektorler/gida-sut">Gıda & Süt</Link>
-	        <Link href="/sektorler/kimya">Kimya</Link>
-	        <Link href="/sektorler/enerji">Enerji</Link>
-	        <Link href="/sektorler/su-atiksu">Su & Atıksu</Link>
+	        <SheetClose asChild>
+	          <Link href="/sektorler/gida-sut">Gıda & Süt</Link>
+	        </SheetClose>
+	        <SheetClose asChild>
+	          <Link href="/sektorler/kimya">Kimya</Link>
+	        </SheetClose>
+	        <SheetClose asChild>
+	          <Link href="/sektorler/enerji">Enerji</Link>
+	        </SheetClose>
+	        <SheetClose asChild>
+	          <Link href="/sektorler/su-atiksu">Su & Atıksu</Link>
+	        </SheetClose>
 	      </div>
 	    </div>
 	
-	    <Link href="/referanslar" className="font-medium text-brand-navy">
-	      Referanslar
-	    </Link>
-	    <Link href="/blog" className="font-medium text-brand-navy">
-	      Blog
-	    </Link>
-	    <Link href="/hakkimizda" className="font-medium text-brand-navy">
-	      Hakkımızda
-	    </Link>
+	    <SheetClose asChild>
+	      <Link href="/referanslar" className="font-medium text-brand-navy">Referanslar</Link>
+	    </SheetClose>
+	    <SheetClose asChild>
+	      <Link href="/blog" className="font-medium text-brand-navy">Blog</Link>
+	    </SheetClose>
+	    <SheetClose asChild>
+	      <Link href="/hakkimizda" className="font-medium text-brand-navy">Hakkımızda</Link>
+	    </SheetClose>
 	
-	    <Button
-	      asChild
-	      className="mt-2 rounded-full border-2 border-brand-teal text-brand-navy hover:bg-brand-teal hover:text-white"
-	    >
-	      <Link href="/iletisim">İletişim</Link>
-	    </Button>
+	    <SheetClose asChild>
+	      <Button
+	        asChild
+	        className="mt-2 rounded-full border-2 border-brand-teal text-brand-navy hover:bg-brand-teal hover:text-white"
+	      >
+	        <Link href="/iletisim">İletişim</Link>
+	      </Button>
+	    </SheetClose>
 	  </div>
 	</SheetContent>
           </Sheet>
