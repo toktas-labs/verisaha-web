@@ -54,7 +54,7 @@ export default function Navbar() {
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link
-                  href="/cozumler/proje-bazli-cozumler"
+                  href="/cozumler/proje-bazli"
                   className="block w-full rounded-md px-3 py-2 hover:bg-slate-100 focus:bg-slate-100"
                 >
                   Proje Bazlı Çözümler
@@ -174,32 +174,48 @@ export default function Navbar() {
             <SheetTrigger className="md:hidden">
               <Menu className="size-6 text-brand-navy" />
             </SheetTrigger>
-            <SheetContent side="left" className="w-72">
-              <div className="mt-6 flex flex-col gap-4">
-                <Link href="/cozumler" className="font-medium text-brand-navy">
-                  Çözümler
-                </Link>
-                <Link href="/sektorler" className="font-medium text-brand-navy">
-                  Sektörler
-                </Link>
-                <Link href="/referanslar" className="font-medium text-brand-navy">
-                  Referanslar
-                </Link>
-                <Link href="/blog" className="font-medium text-brand-navy">
-                  Blog
-                </Link>
-                <Link href="/hakkimizda" className="font-medium text-brand-navy">
-                  Hakkımızda
-                </Link>
-                <Button
-                  asChild
-                  className="mt-2 rounded-full border-2 border-brand-teal text-brand-navy hover:bg-brand-teal hover:text-white"
-                >
-                  <Link href="/iletisim">İletişim</Link>
+	 <SheetContent side="left" className="w-72 bg-white/40 backdrop-blur-sm">
+	  <div className="mt-6 flex flex-col gap-4">
+	    <div>
+	      <span className="font-medium text-brand-navy">Çözümler</span>
+	      <div className="ml-4 mt-2 flex flex-col gap-2 text-sm text-slate-700">
+	        <Link href="/cozumler/olcum-izleme">Ölçüm İzleme</Link>
+	        <Link href="/cozumler/proje-bazli">Proje Bazlı Çözümler</Link>
+	        <Link href="/cozumler/endustriyel-otomasyon">Endüstriyel Otomasyon</Link>
+	        <Link href="/cozumler/raporlama">Raporlama</Link>
+	        <Link href="/cozumler/uzaktan-izleme">Uzaktan İzleme</Link>
+	        <Link href="/cozumler/danismanlik">Danışmanlık</Link>
+	      </div>
+	    </div>
 
-                </Button>
-              </div>
-            </SheetContent>
+	    <div>
+	      <span className="font-medium text-brand-navy">Sektörler</span>
+	      <div className="ml-4 mt-2 flex flex-col gap-2 text-sm text-slate-700">
+	        <Link href="/sektorler/gida-sut">Gıda & Süt</Link>
+	        <Link href="/sektorler/kimya">Kimya</Link>
+	        <Link href="/sektorler/enerji">Enerji</Link>
+	        <Link href="/sektorler/su-atiksu">Su & Atıksu</Link>
+	      </div>
+	    </div>
+	
+	    <Link href="/referanslar" className="font-medium text-brand-navy">
+	      Referanslar
+	    </Link>
+	    <Link href="/blog" className="font-medium text-brand-navy">
+	      Blog
+	    </Link>
+	    <Link href="/hakkimizda" className="font-medium text-brand-navy">
+	      Hakkımızda
+	    </Link>
+	
+	    <Button
+	      asChild
+	      className="mt-2 rounded-full border-2 border-brand-teal text-brand-navy hover:bg-brand-teal hover:text-white"
+	    >
+	      <Link href="/iletisim">İletişim</Link>
+	    </Button>
+	  </div>
+	</SheetContent>
           </Sheet>
         </div>
       </div>

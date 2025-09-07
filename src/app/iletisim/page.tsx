@@ -47,7 +47,7 @@ export default function Page() {
                     <Link href="mailto:info@verisaha.com" className="font-medium hover:underline">
                       info@verisaha.com
                     </Link>
-                    <p className="text-slate-600">Teklif & genel sorular</p>
+                    <p className="text-slate-600">Teklif talebi & genel sorular</p>
                   </div>
                 </div>
 

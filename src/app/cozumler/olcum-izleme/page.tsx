@@ -54,7 +54,7 @@ export default function MeasurementMonitoringPage() {
               </li>
               <li className="flex items-start gap-2">
                 <Lucide.CheckCircle2 className="mt-0.5 size-5 shrink-0" />
-                <span><b>Kolay Raporlama:</b> Trend, arşiv ve PDF/Excel çıktı.</span>
+                <span><b>Kolay Raporlama:</b> Trend, arşiv ve PDF/Excel çıktısı.</span>
               </li>
             </ul>
 
@@ -197,7 +197,7 @@ export default function MeasurementMonitoringPage() {
           <div className="flex-1 space-y-4">
             <p className="text-slate-600">
               Trend analizleri, arşiv görüntüleme ve PDF/Excel çıktıları ile kalite ve
-              yönetim raporlarını zahmetsiz hazırlayın.
+              yönetim raporlarını pratik ve kolay şekilde hazırlayın.
             </p>
             <ul className="list-disc pl-5 text-slate-600">
               <li>Günlük/aylık/yıllık trendler</li>

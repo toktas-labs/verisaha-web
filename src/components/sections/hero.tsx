@@ -26,7 +26,7 @@ export default function Hero() {
           gerçek zamanlı takip edin. Uzaktan kontrol ve otomatik raporlama ile üretimi hızlandırın.
         </p>
         <p className="mt-4 max-w-2xl text-white/90 md:text-lg leading-relaxed">
-          Standart izleme dışında, ihtiyacınıza özel proje bazlı sistemleri tasarlıyor, entegre ediyor ve anahtar teslim devreye alıyoruz.
+          Standart izleme çözümlerinin yanı sıra, ihtiyacınıza özel proje bazlı sistemleri tasarlıyor, entegre ediyor ve anahtar teslim devreye alıyoruz.
         </p>
 
         {/* Teknoloji rozetleri (protokol-agnostik) */}
