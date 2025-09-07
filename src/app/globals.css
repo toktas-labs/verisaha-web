@@ -81,7 +81,6 @@
 
 /* Base reset */
 @layer base {
-  /* sadece border rengini ayarla (performans) */
   * { border-color: rgb(var(--border)); }
 
   body {

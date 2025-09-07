@@ -196,6 +196,7 @@ export default function Navbar() {
                   className="mt-2 rounded-full border-2 border-brand-teal text-brand-navy hover:bg-brand-teal hover:text-white"
                 >
                   <Link href="/iletisim">İletişim</Link>
+
                 </Button>
               </div>
             </SheetContent>
