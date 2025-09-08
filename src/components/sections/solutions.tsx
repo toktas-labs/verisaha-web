@@ -7,7 +7,7 @@ const services = [
   { key: "olcum-izleme", title: "Ölçüm İzleme", icon: "Gauge",
     excerpt: "Akış, seviye, sıcaklık, basınç ve proses analitiği dâhil tüm ölçüm verilerini tek panelden izleyin." },
   { key: "proje-bazli-cozumler", title: "Proje Bazlı Çözümler", icon: "Settings",
-    excerpt: "Set–reset panoları, batch panoları, test sistemleri ve müşteri taleplerine özel tasarlanan çözümler." },
+    excerpt: "Batch & Set–Reset panoları, test sistemleri ve müşteri taleplerine özel tasarlanan çözümler." },
   { key: "endustriyel-otomasyon", title: "Endüstriyel Otomasyon", icon: "Cpu",
     excerpt: "PLC, SCADA ve HMI sistemleriyle endüstriyel takip ve entegrasyon: S7-1200/1500 vb." },
   { key: "raporlama", title: "Raporlama", icon: "BarChart3",

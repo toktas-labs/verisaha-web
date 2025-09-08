@@ -1,5 +1,5 @@
 // ------------------------------------------------------------
-// src/app/cozumler/proje-bazli/page.tsx
+// src/app/cozumler/uzaktan-izleme/page.tsx
 // ------------------------------------------------------------
 import Image from "next/image";
 import Link from "next/link";
@@ -15,57 +15,56 @@ import {
 import * as Lucide from "lucide-react";
 
 export const metadata = {
-  title: "Proje Bazlı Çözümler | VeriSaha Teknoloji",
+  title: "Uzaktan İzleme | VeriSaha Teknoloji",
   description:
-    "Batch & Set–Reset panoları, test sistemleri ve müşteri taleplerine özel tasarlanan çözümler. Anahtar teslim entegrasyon ve devreye alma hizmetleri.",
+    "Sahadaki ölçüm cihazlarını web, mobil ve bilgisayar üzerinden anlık olarak izleyin ve yönetin.",
 };
 
-export default function ProjectBasedSolutionsPage() {
+export default function RemoteMonitoringPage() {
   return (
     <main className="bg-white">
       {/* HERO */}
       <section className="relative overflow-hidden min-h-[400px] md:min-h-[500px] lg:min-h-[560px]">
         <div className="absolute inset-0 z-0">
           <Image
-            src="/proje/hero.jpg"
-            alt="Proje bazlı çözümler"
+            src="/uzaktan/hero.jpg"
+            alt="Uzaktan İzleme"
             fill
             className="object-cover opacity-40"
             priority
           />
-          <div className="absolute inset-0 bg-gradient-to-br from-brand-navy/85 via-cyan-800/70 to-teal-700/65" />
+          <div className="absolute inset-0 bg-gradient-to-r from-cyan-900/80 via-brand-navy/75 to-teal-700/60" />
         </div>
 
         <div className="relative z-10 mx-auto max-w-6xl px-4 py-12 md:py-20 text-white">
           <div className="max-w-3xl">
             <h1 className="text-3xl md:text-5xl font-bold leading-tight md:leading-[1.15]">
-              Proje Bazlı Çözümler
+              Uzaktan İzleme
             </h1>
             <p className="mt-4 max-w-2xl text-white/90 md:text-lg leading-relaxed">
-              Batch & Set–Reset panoları, test sistemleri ve müşteri
-              taleplerine özel tasarlanan çözümler. Entegrasyon, devreye alma
-              ve uzun vadeli güvenilirlik.
+              Sahadaki ölçüm cihazlarını web, mobil ve bilgisayar üzerinden
+              anlık olarak izleyin ve yönetin.
             </p>
 
             <ul className="mt-6 grid gap-2 text-white">
               <li className="flex items-start gap-2">
                 <Lucide.CheckCircle2 className="mt-0.5 size-5 shrink-0" />
-                <span><b>Esneklik:</b> İhtiyaca özel pano ve otomasyon projeleri.</span>
+                <span><b>Çoklu Platform:</b> Web, mobil ve masaüstü erişim.</span>
               </li>
               <li className="flex items-start gap-2">
                 <Lucide.CheckCircle2 className="mt-0.5 size-5 shrink-0" />
-                <span><b>Güvenilirlik:</b> Sahada kanıtlanmış tasarım ve montaj.</span>
+                <span><b>Gerçek Zamanlı Takip:</b> Anlık ölçüm değerleri ve alarmlar.</span>
               </li>
               <li className="flex items-start gap-2">
                 <Lucide.CheckCircle2 className="mt-0.5 size-5 shrink-0" />
-                <span><b>Kontrol Esnekliği:</b> PLC, PC ve Web tabanlı çözümlerle uyumlu.</span>
+                <span><b>Güvenli Erişim:</b> VPN, şifreleme ve yetkilendirme desteği.</span>
               </li>
             </ul>
 
             <div className="mt-8 flex flex-wrap gap-3">
               <Link href="/iletisim">
                 <Button size="lg" className="bg-white text-brand-navy hover:bg-slate-100">
-                  Proje Talep Edin
+                  Çözüm Talep Edin
                 </Button>
               </Link>
               <Link href="#bolumler">
@@ -83,25 +82,25 @@ export default function ProjectBasedSolutionsPage() {
         <div className="mx-auto max-w-6xl px-4 py-14 md:py-20">
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 items-stretch">
 
-            {/* Batch & Set-Reset Panoları */}
+            {/* Web Arayüzü */}
             <Card className="flex flex-col h-full">
               <CardHeader className="flex flex-row items-center gap-3">
                 <div className="rounded-xl bg-brand-navy/5 p-3">
-                  <Lucide.Settings className="size-6 text-brand-navy" />
+                  <Lucide.Globe className="size-6 text-brand-navy" />
                 </div>
-                <CardTitle>Batch & Set-Reset Panoları</CardTitle>
+                <CardTitle>Web Arayüzü</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col flex-1">
                 <p className="text-slate-600">
-                  Dolum ve üretim hatlarında kullanılan batch ve set–reset
-                  panoları; yüksek doğruluk, güvenlik ve kolay kullanım.
+                  Tarayıcı tabanlı izleme ekranları ile her yerden ölçüm
+                  verilerine erişin.
                 </p>
                 <Dialog>
                   <DialogTrigger asChild>
                     <div className="relative mt-4 aspect-[4/3] w-full overflow-hidden rounded-lg border cursor-pointer">
                       <Image
-                        src="/proje/pano.jpg"
-                        alt="Batch & Set-Reset Panoları"
+                        src="/uzaktan/web.jpg"
+                        alt="Web Arayüzü"
                         fill
                         className="object-cover"
                       />
@@ -111,13 +110,13 @@ export default function ProjectBasedSolutionsPage() {
                     </div>
                   </DialogTrigger>
                   <DialogContent className="max-w-4xl [&>button:not(.custom-close)]:hidden">
-                    <DialogTitle className="sr-only">Batch & Set-Reset Panoları</DialogTitle>
+                    <DialogTitle className="sr-only">Web Arayüzü</DialogTitle>
                     <DialogClose className="custom-close absolute top-3 right-3 rounded-full bg-white/90 hover:bg-white p-2 shadow">
                       <Lucide.X className="h-5 w-5 text-brand-navy" />
                     </DialogClose>
                     <Image
-                      src="/proje/pano.jpg"
-                      alt="Batch & Set-Reset Panoları büyük"
+                      src="/uzaktan/web.jpg"
+                      alt="Web Arayüzü büyük"
                       width={1200}
                       height={900}
                       className="w-full h-auto rounded-lg"
@@ -127,25 +126,25 @@ export default function ProjectBasedSolutionsPage() {
               </CardContent>
             </Card>
 
-            {/* Test Sistemleri */}
+            {/* Mobil Uygulama */}
             <Card className="flex flex-col h-full">
               <CardHeader className="flex flex-row items-center gap-3">
                 <div className="rounded-xl bg-brand-navy/5 p-3">
-                  <Lucide.TestTube className="size-6 text-brand-navy" />
+                  <Lucide.Smartphone className="size-6 text-brand-navy" />
                 </div>
-                <CardTitle>Test & Kalibrasyon Sistemleri</CardTitle>
+                <CardTitle>Mobil Uygulama</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col flex-1">
                 <p className="text-slate-600">
-                  Özel test ve kalibrasyon ihtiyaçlarınıza uygun, hassasiyet
-                  ve güvenlik öncelikli çözümler.
+                  Android/iOS uygulamaları ile sahadaki cihazları
+                  cebinizden takip edin.
                 </p>
                 <Dialog>
                   <DialogTrigger asChild>
                     <div className="relative mt-4 aspect-[4/3] w-full overflow-hidden rounded-lg border cursor-pointer">
                       <Image
-                        src="/proje/test.jpg"
-                        alt="Test ve Kalibrasyon Sistemleri"
+                        src="/uzaktan/mobil.jpg"
+                        alt="Mobil Uygulama"
                         fill
                         className="object-cover"
                       />
@@ -155,13 +154,13 @@ export default function ProjectBasedSolutionsPage() {
                     </div>
                   </DialogTrigger>
                   <DialogContent className="max-w-4xl [&>button:not(.custom-close)]:hidden">
-                    <DialogTitle className="sr-only">Test & Kalibrasyon Sistemleri</DialogTitle>
+                    <DialogTitle className="sr-only">Mobil Uygulama</DialogTitle>
                     <DialogClose className="custom-close absolute top-3 right-3 rounded-full bg-white/90 hover:bg-white p-2 shadow">
                       <Lucide.X className="h-5 w-5 text-brand-navy" />
                     </DialogClose>
                     <Image
-                      src="/proje/test.jpg"
-                      alt="Test ve Kalibrasyon Sistemleri büyük"
+                      src="/uzaktan/mobil.jpg"
+                      alt="Mobil Uygulama büyük"
                       width={1200}
                       height={900}
                       className="w-full h-auto rounded-lg"
@@ -171,25 +170,24 @@ export default function ProjectBasedSolutionsPage() {
               </CardContent>
             </Card>
 
-            {/* Özel Projeler */}
+            {/* PC & SCADA Entegrasyonu */}
             <Card className="flex flex-col h-full">
               <CardHeader className="flex flex-row items-center gap-3">
                 <div className="rounded-xl bg-brand-navy/5 p-3">
-                  <Lucide.Layers className="size-6 text-brand-navy" />
+                  <Lucide.Monitor className="size-6 text-brand-navy" />
                 </div>
-                <CardTitle>Müşteriye Özel Projeler</CardTitle>
+                <CardTitle>PC & SCADA Entegrasyonu</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col flex-1">
                 <p className="text-slate-600">
-                  Tamamen ihtiyaca göre tasarlanmış projeler. PLC, SCADA ve
-                  endüstriyel haberleşme altyapılarıyla uyumlu çözümler.
+                  Bilgisayar üzerinden kapsamlı izleme ve SCADA entegrasyonu.
                 </p>
                 <Dialog>
                   <DialogTrigger asChild>
                     <div className="relative mt-4 aspect-[4/3] w-full overflow-hidden rounded-lg border cursor-pointer">
                       <Image
-                        src="/proje/ozel.jpg"
-                        alt="Müşteriye Özel Projeler"
+                        src="/uzaktan/pc.jpg"
+                        alt="PC & SCADA Entegrasyonu"
                         fill
                         className="object-cover"
                       />
@@ -199,13 +197,13 @@ export default function ProjectBasedSolutionsPage() {
                     </div>
                   </DialogTrigger>
                   <DialogContent className="max-w-4xl [&>button:not(.custom-close)]:hidden">
-                    <DialogTitle className="sr-only">Müşteriye Özel Projeler</DialogTitle>
+                    <DialogTitle className="sr-only">PC & SCADA Entegrasyonu</DialogTitle>
                     <DialogClose className="custom-close absolute top-3 right-3 rounded-full bg-white/90 hover:bg-white p-2 shadow">
                       <Lucide.X className="h-5 w-5 text-brand-navy" />
                     </DialogClose>
                     <Image
-                      src="/proje/ozel.jpg"
-                      alt="Müşteriye Özel Projeler büyük"
+                      src="/uzaktan/pc.jpg"
+                      alt="PC & SCADA Entegrasyonu büyük"
                       width={1200}
                       height={900}
                       className="w-full h-auto rounded-lg"
@@ -225,10 +223,10 @@ export default function ProjectBasedSolutionsPage() {
           <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
             <div>
               <h2 className="text-2xl font-semibold">
-                Projenizi birlikte tasarlayalım.
+                Verilerinize her yerden erişin.
               </h2>
               <p className="mt-1 text-white/85">
-                İhtiyacınıza uygun pano, test sistemi ve entegrasyon çözümleri.
+                Web, mobil ve PC tabanlı çözümlerle sahadaki cihazlarınızı anlık olarak izleyin.
               </p>
             </div>
             <div className="flex gap-3">
