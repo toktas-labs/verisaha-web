@@ -2,7 +2,7 @@ export function StatsStrip() {
   const stats = [
     { k: "20+", v: "Uzaktan İzleme Yazılımı" },
     { k: "7/24", v: "Canlı Veri Takibi" },
-    { k: "Modbus / S7", v: "Haberleşme" },
+    { k: "Endüstri 4.0", v: "Dijitalleşme Çözümleri" },
   ];
 
   return (

@@ -43,7 +43,7 @@ export default function Hero() {
             asChild
             className="rounded-full bg-white text-brand-navy hover:bg-white/90"
           >
-            <Link href="/cozumler">Çözümlerimizi Keşfedin →</Link>
+            <Link href="#solutions">Çözümlerimizi Keşfedin →</Link>
           </Button>
         </div>
       </div>

@@ -33,13 +33,24 @@ export default function Page() {
                 <CardTitle>VeriSaha Merkez</CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
-                <div className="flex items-start gap-3">
-                  <MapPin className="mt-1 h-5 w-5 text-brand-navy" />
-                  <div>
-                    <p className="font-medium">Antalya, Türkiye</p>
-                    <p className="text-slate-600">Randevu ile ziyaret</p>
-                  </div>
-                </div>
+	<div className="flex items-start gap-3">
+	  <MapPin className="mt-1 h-5 w-5 text-brand-navy" />
+	  <div>
+	    <p className="font-semibold">VeriSaha Teknoloji San. ve Tic. Ltd. Şti</p>
+	    <p className="text-slate-600">
+	      Yeniköy Mh. 658 Sk. Sanayi Sitesi H Blok No:3 Dükkan 12 <br />
+	      Döşemealtı - Antalya / TÜRKİYE
+	    </p>
+	    <Link
+	      href="https://www.google.com/maps?q=Yeniköy+Mah.+658+Sk.+Sanayi+Sitesi+H+Blok+No:3+Dükkan+12,+Döşemealtı,+Antalya"
+	      target="_blank"
+	      rel="noopener noreferrer"
+	      className="text-brand-teal hover:underline text-sm font-medium"
+	    >
+	      📍 Google Maps’te Görüntüle
+	    </Link>
+	  </div>
+	</div>
 
                 <div className="flex items-start gap-3">
                   <Mail className="mt-1 h-5 w-5 text-brand-navy" />
