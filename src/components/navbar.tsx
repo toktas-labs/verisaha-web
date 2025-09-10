@@ -95,53 +95,6 @@ export default function Navbar() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Sektörler */}
-          <DropdownMenu>
-            <DropdownMenuTrigger className={`${navLink} flex items-center gap-1 outline-none`}>
-              Sektörler <ChevronDown className="size-4 text-brand-teal" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              className="min-w-56 bg-white text-brand-navy shadow-2xl border border-slate-200"
-            >
-              <DropdownMenuItem asChild>
-                <Link
-                  href="/sektorler/gida-sut"
-                  className="block w-full rounded-md px-3 py-2 hover:bg-slate-100 focus:bg-slate-100"
-                >
-                  Gıda & Süt
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link
-                  href="/sektorler/kimya"
-                  className="block w-full rounded-md px-3 py-2 hover:bg-slate-100 focus:bg-slate-100"
-                >
-                  Kimya
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link
-                  href="/sektorler/enerji"
-                  className="block w-full rounded-md px-3 py-2 hover:bg-slate-100 focus:bg-slate-100"
-                >
-                  Enerji
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link
-                  href="/sektorler/su-atiksu"
-                  className="block w-full rounded-md px-3 py-2 hover:bg-slate-100 focus:bg-slate-100"
-                >
-                  Su & Atıksu
-                </Link>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <Link href="/referanslar" className={navLink}>
-            Referanslar
-          </Link>
           <Link href="/blog" className={navLink}>
             Blog
           </Link>
@@ -199,28 +152,7 @@ export default function Navbar() {
 	        </SheetClose>
 	      </div>
 	    </div>
-
-	    <div>
-	      <span className="font-medium text-brand-navy">Sektörler</span>
-	      <div className="ml-4 mt-2 flex flex-col gap-2 text-sm text-slate-700">
-	        <SheetClose asChild>
-	          <Link href="/sektorler/gida-sut">Gıda & Süt</Link>
-	        </SheetClose>
-	        <SheetClose asChild>
-	          <Link href="/sektorler/kimya">Kimya</Link>
-	        </SheetClose>
-	        <SheetClose asChild>
-	          <Link href="/sektorler/enerji">Enerji</Link>
-	        </SheetClose>
-	        <SheetClose asChild>
-	          <Link href="/sektorler/su-atiksu">Su & Atıksu</Link>
-	        </SheetClose>
-	      </div>
-	    </div>
 	
-	    <SheetClose asChild>
-	      <Link href="/referanslar" className="font-medium text-brand-navy">Referanslar</Link>
-	    </SheetClose>
 	    <SheetClose asChild>
 	      <Link href="/blog" className="font-medium text-brand-navy">Blog</Link>
 	    </SheetClose>

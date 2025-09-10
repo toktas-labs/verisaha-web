@@ -33,54 +33,61 @@ export default function Page() {
                 <CardTitle>VeriSaha Merkez</CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
-	<div className="flex items-start gap-3">
-	  <MapPin className="mt-1 h-5 w-5 text-brand-navy" />
-	  <div>
-	    <p className="font-semibold">VeriSaha Teknoloji San. ve Tic. Ltd. Şti</p>
-	    <p className="text-slate-600">
-	      Yeniköy Mh. 658 Sk. Sanayi Sitesi H Blok No:3 Dükkan 12 <br />
-	      Döşemealtı - Antalya / TÜRKİYE
-	    </p>
-	    <Link
-	      href="https://www.google.com/maps?q=Yeniköy+Mah.+658+Sk.+Sanayi+Sitesi+H+Blok+No:3+Dükkan+12,+Döşemealtı,+Antalya"
-	      target="_blank"
-	      rel="noopener noreferrer"
-	      className="text-brand-teal hover:underline text-sm font-medium"
-	    >
-	      📍 Google Maps’te Görüntüle
-	    </Link>
-	  </div>
-	</div>
+<div className="flex items-start gap-3">
+  <MapPin className="mt-1 h-5 w-5 text-brand-navy" />
+  <div>
+    <p className="font-semibold">VeriSaha Teknoloji San. ve Tic. Ltd. Şti</p>
+    <p className="text-slate-600">
+      Yeniköy Mh. 658 Sk. H Blok No:3 Dükkan 12 <br />
+      Döşemealtı - Antalya / TÜRKİYE
+    </p>
+    <p className="mt-2">
+      <Link
+        href="https://maps.app.goo.gl/G3wzLjZ9jQ2hFFsr7"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-brand-teal hover:underline text-sm font-medium"
+      >
+        📍 Google Maps’te Görüntüle
+      </Link>
+    </p>
+  </div>
+</div>
 
-                <div className="flex items-start gap-3">
-                  <Mail className="mt-1 h-5 w-5 text-brand-navy" />
-                  <div>
-                    <Link href="mailto:info@verisaha.com" className="font-medium hover:underline">
-                      info@verisaha.com
-                    </Link>
-                    <p className="text-slate-600">Teklif talebi & genel sorular</p>
-                  </div>
-                </div>
+<div className="flex items-start gap-3">
+  <Mail className="mt-3 h-5 w-5 text-brand-navy" />
+  <div>
+    <p className="mt-2">
+      <Link href="mailto:info@verisaha.com" className="font-medium hover:underline">
+        info@verisaha.com
+      </Link>
+    </p>
+    <p className="text-slate-600">Teklif talebi & genel sorular</p>
+  </div>
+</div>
 
-                <div className="flex items-start gap-3">
-                  <Phone className="mt-1 h-5 w-5 text-brand-navy" />
-                  <div>
-                    <Link href="tel:+905446614303" className="font-medium hover:underline">
-                      +90 544 661 43 03
-                    </Link>
-                    <p className="text-slate-600">7/24 canlı veri takibi için destek</p>
-                  </div>
-                </div>
+<div className="flex items-start gap-3">
+  <Phone className="mt-3 h-5 w-5 text-brand-navy" />
+  <div>
+    <p className="mt-2">
+      <Link href="tel:+905446614303" className="font-medium hover:underline">
+        +90 544 661 43 03
+      </Link>
+    </p>
+    <p className="text-slate-600">7/24 canlı veri takibi için destek</p>
+  </div>
+</div>
 
-                <div className="flex items-start gap-3">
-                  <Clock className="mt-1 h-5 w-5 text-brand-navy" />
-                  <div>
-                    <p className="font-medium">Çalışma Saatleri</p>
-                    <p className="text-slate-600">Hafta içi 09:00–18:00</p>
-                  </div>
-                </div>
+<div className="flex items-start gap-3">
+  <Clock className="mt-3 h-5 w-5 text-brand-navy" />
+  <div>
+    <p className="mt-2 font-medium">Çalışma Saatleri</p>
+    <p className="text-slate-600">Hafta içi 09:00–18:00</p>
+  </div>
+</div>
 
-                <div className="pt-1">
+
+                <div className="pt-6">
                   <p className="text-sm text-slate-500 mb-2">Bizi takip edin</p>
                   <div className="flex items-center gap-3">
                     <Link href="https://www.linkedin.com" className="inline-flex rounded-full p-2 hover:bg-slate-100" aria-label="LinkedIn">

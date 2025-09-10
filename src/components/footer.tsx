@@ -32,37 +32,37 @@ export default function Footer() {
           <div>
             <h4 className="text-white font-semibold mb-3">Hizmetler</h4>
             <ul className="space-y-2 text-white/80">
-   		<li><Link className="hover:underline" href="/cozumler">Tüm Hizmetler</Link></li>
-    		<li><Link className="hover:underline" href="/cozumler">Ölçüm İzleme</Link></li>
-    		<li><Link className="hover:underline" href="/cozumler">Proje Bazlı Çözümler</Link></li>
-    		<li><Link className="hover:underline" href="/cozumler">Endüstriyel Otomasyon</Link></li>
-    		<li><Link className="hover:underline" href="/cozumler">Raporlama</Link></li>
+   		<li><Link className="hover:underline" href="/#solutions">Tüm Hizmetler</Link></li>
+    		<li><Link className="hover:underline" href="/cozumler//uzaktan-izleme">Uzaktan İzleme</Link></li>
+    		<li><Link className="hover:underline" href="/cozumler/proje-bazli">Proje Bazlı Çözümler</Link></li>
+    		<li><Link className="hover:underline" href="/cozumler/endustriyel-otomasyon">Endüstriyel Otomasyon</Link></li>
+    		<li><Link className="hover:underline" href="/cozumler/raporlama">Raporlama</Link></li>
             </ul>
           </div>
 
           {/* Sektörler */}
-          <div>
-            <h4 className="text-white font-semibold mb-3">Sektörler</h4>
-            <ul className="space-y-2 text-white/80">
-    		<li><Link className="hover:underline" href="/sektorler">Tüm Sektörler</Link></li>
-    		<li><Link className="hover:underline" href="/sektorler">Gıda &amp; Süt</Link></li>
-    		<li><Link className="hover:underline" href="/sektorler">Kimya</Link></li>
-    		<li><Link className="hover:underline" href="/sektorler">Enerji</Link></li>
-    		<li><Link className="hover:underline" href="/sektorler">Su &amp; Atıksu</Link></li>
-            </ul>
-          </div>
+	<div>
+	  <h4 className="text-white font-semibold mb-3">Sektörler</h4>
+	  <ul className="space-y-2 text-white/80">
+	    <li>Tüm Sektörler</li>
+	    <li>Gıda &amp; Süt</li>
+	    <li>Kimya</li>
+	    <li>Enerji</li>
+	    <li>Su &amp; Atıksu</li>
+	  </ul>
+	</div>
 
           {/* Hakkımızda */}
-          <div>
-            <h4 className="text-white font-semibold mb-3">Hakkımızda</h4>
-            <ul className="space-y-2 text-white/80">
-    		<li><Link className="hover:underline" href="/hakkimizda">Kurumsal</Link></li>
-    		<li><Link className="hover:underline" href="/referanslar">Referanslar</Link></li>
-    		<li><Link className="hover:underline" href="/blog">Blog</Link></li>
-    		<li><Link className="hover:underline" href="/hukuk">Yasal Bilgiler</Link></li>
-    		<li><Link className="hover:underline" href="/gizlilik">Gizlilik Politikası</Link></li>
-            </ul>
-          </div>
+	<div>
+	  <h4 className="text-white font-semibold mb-3">Hakkımızda</h4>
+	  <ul className="space-y-2 text-white/80">
+	    <li>Kurumsal</li>
+	    {/* Referanslar tamamen kaldırıldı */}
+	    <li>Blog</li>
+	    <li>Yasal Bilgiler</li>
+	    <li>Gizlilik Politikası</li>
+	  </ul>
+	</div>
 
           {/* Headquarters (2 kolon genişlik) */}
           <div>

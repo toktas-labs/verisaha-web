@@ -237,11 +237,6 @@ export default function ProjectBasedSolutionsPage() {
                   İletişime Geçin
                 </Button>
               </Link>
-              <Link href="/referanslar">
-                <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
-                  Referanslar
-                </Button>
-              </Link>
             </div>
           </div>
         </div>
