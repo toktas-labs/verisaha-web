@@ -87,18 +87,18 @@ export default function Page() {
 </div>
 
 
-                <div className="pt-6">
-                  <p className="text-sm text-slate-500 mb-2">Bizi takip edin</p>
-                  <div className="flex items-center gap-3">
-                    <Link href="https://www.linkedin.com" className="inline-flex rounded-full p-2 hover:bg-slate-100" aria-label="LinkedIn">
-                      <Linkedin className="h-5 w-5" />
-                    </Link>
-                    <Link href="https://www.instagram.com" className="inline-flex rounded-full p-2 hover:bg-slate-100" aria-label="Instagram">
-                      <Instagram className="h-5 w-5" />
-                    </Link>
-                    <Link href="https://www.youtube.com" className="inline-flex rounded-full p-2 hover:bg-slate-100" aria-label="YouTube">
-                      <Youtube className="h-5 w-5" />
-                    </Link>
+          <div className="pt-6">
+               <p className="text-sm text-slate-500 mb-2">Bizi takip edin</p>
+               <div className="flex items-center gap-3">
+    		<Link 
+   		   href="https://www.linkedin.com/company/verisaha-teknoloji/" 
+   		   className="inline-flex rounded-full p-2 hover:bg-slate-100" 
+  		   aria-label="LinkedIn"
+ 		   target="_blank"
+ 		   rel="noopener noreferrer"
+	        >
+	         <Linkedin className="h-5 w-5" />
+	        </Link>
                   </div>
                 </div>
               </CardContent>

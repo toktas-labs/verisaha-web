@@ -91,15 +91,10 @@ export default function Footer() {
           {/* Sosyal */}
           <div className="flex items-center gap-3">
             <a
-              aria-label="YouTube"
-              href="#"
-              className="size-9 rounded-full grid place-items-center border border-white/20 hover:bg-white/10"
-            >
-              <Youtube className="h-5 w-5" />
-            </a>
-            <a
               aria-label="LinkedIn"
-              href="#"
+              href="https://www.linkedin.com/company/verisaha-teknoloji/"
+	      target="_blank"
+	      rel="noopener noreferrer"
               className="size-9 rounded-full grid place-items-center border border-white/20 hover:bg-white/10"
             >
               <Linkedin className="h-5 w-5" />
