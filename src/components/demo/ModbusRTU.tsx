@@ -3,6 +3,13 @@ import { useState, useRef, useEffect } from "react";
 import { flushSync } from "react-dom";
 import TrendChart from "./TrendChart";
 
+// Web Serial API type fix
+declare global {
+  interface Navigator {
+    serial: any;
+  }
+}
+
 type SerialPort = any;
 type ReadableStreamDefaultReader<T> = any;
 type WritableStreamDefaultWriter<T = any> = any;
