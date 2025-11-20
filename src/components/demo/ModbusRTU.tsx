@@ -3,6 +3,10 @@ import { useState, useRef, useEffect } from "react";
 import { flushSync } from "react-dom";
 import TrendChart from "./TrendChart";
 
+type SerialPort = any;
+type ReadableStreamDefaultReader<T> = any;
+type WritableStreamDefaultWriter<T = any> = any;
+
 
 interface RegisterRow {
   index: number;
