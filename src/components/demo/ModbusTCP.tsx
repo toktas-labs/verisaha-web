@@ -430,7 +430,7 @@ function parseRegisters(rawBytes: number[], address: number) {
               <label>Data Type</label>
               <select
                 value={dataType}
-                onChange={(e) => setDataType(e.target.value)}
+                onChange={(e) => setDataType(e.target.value as any)}
                 className="border p-1 rounded w-full"
               >
               <option value="unsigned">Signed (16-bit)</option>
