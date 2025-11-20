@@ -36,6 +36,12 @@ export default function Navbar() {
         {/* Desktop nav */}
         <nav className="hidden items-center gap-8 lg:gap-10 md:flex">
           {/* Çözümler */}
+          <Link
+            href="/demo"
+            className="px-5 py-2 rounded-full font-semibold bg-gradient-to-r from-brand-navy to-brand-teal text-white shadow hover:opacity-90 transition"
+          >
+            Modbus Demo
+          </Link>
           <DropdownMenu>
             <DropdownMenuTrigger className={`${navLink} flex items-center gap-1 outline-none`}>
               Çözümler <ChevronDown className="size-4 text-brand-teal" />
@@ -132,6 +138,14 @@ export default function Navbar() {
 	    <div>
 	      <span className="font-medium text-brand-navy">Çözümler</span>
 	      <div className="ml-4 mt-2 flex flex-col gap-2 text-sm text-slate-700">
+	        <SheetClose asChild>
+ 	         <Link
+	            href="/demo"
+ 	           className="font-semibold text-brand-navy bg-blue-100 px-3 py-2 rounded-md"
+ 	         >
+ 	           Modbus Demo
+ 	         </Link>
+	        </SheetClose>
 	        <SheetClose asChild>
 	          <Link href="/cozumler/olcum-izleme">Ölçüm İzleme</Link>
 	        </SheetClose>
