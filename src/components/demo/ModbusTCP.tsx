@@ -125,8 +125,8 @@ function parseRegisters(rawBytes: number[], address: number) {
       val = new DataView(buf.buffer).getFloat32(0, false);
       i += 4;
     } else if (dataTypeRef.current === "double" && i + 7 < usableBytes) {
-      const buf = rawBytes.slice(i, i + 8);
-      val = new DataView(buf.buffer).getFloat64(0, false);
+    const buf = new Uint8Array(rawBytes.slice(i, i + 8));
+    val = new DataView(buf.buffer).getFloat64(0, false);
       i += 8;
     } else if (dataTypeRef.current === "doubleInverse" && i + 7 < usableBytes) {
       const buf = new Uint8Array([
@@ -142,8 +142,8 @@ function parseRegisters(rawBytes: number[], address: number) {
       val = new DataView(buf.buffer).getFloat64(0, false);
       i += 8;
     } else if (dataTypeRef.current === "long" && i + 3 < usableBytes) {
-      const buf = rawBytes.slice(i, i + 4);
-      val = new DataView(buf.buffer).getInt32(0, false);
+    const buf = new Uint8Array(rawBytes.slice(i, i + 4));
+    val = new DataView(buf.buffer).getInt32(0, false);
       i += 4;
     } else if (dataTypeRef.current === "longInverse" && i + 3 < usableBytes) {
       const buf = new Uint8Array([
