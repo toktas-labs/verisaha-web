@@ -4,51 +4,44 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import net from "net";
 
-export async function POST(req: Request) {
-  const { ip, port } = await req.json();
+export async function POST(req: Request): Promise<Response> {
+  let body = null;
 
-  return new Promise((resolve) => {
-    const socket = new net.Socket();
-    let responded = false;
+  try {
+    body = await req.json();
+  } catch (e) {
+    return NextResponse.json(
+      { success: false, error: "Geçersiz JSON" },
+      { status: 400 }
+    );
+  }
 
-    // 🔹 3 saniyelik timeout
-    socket.setTimeout(3000, () => {
-      if (!responded) {
-        responded = true;
-        resolve(
-          NextResponse.json({
-            success: false,
-            error: "Zaman aşımı: Cihaz yanıt vermedi.",
-          })
-        );
+  const { ip, port } = body;
+
+  const result = await new Promise<{ success: boolean; error?: string }>(
+    (resolve) => {
+      const socket = new net.Socket();
+
+      socket.setTimeout(3000);
+
+      socket.on("connect", () => {
+        resolve({ success: true });
         socket.destroy();
-      }
-    });
+      });
 
-    // 🔹 Bağlantı başarılı
-    socket.on("connect", () => {
-      if (!responded) {
-        responded = true;
-        resolve(NextResponse.json({ success: true }));
+      socket.on("error", (err) => {
+        resolve({ success: false, error: "Bağlantı hatası: " + err.message });
         socket.destroy();
-      }
-    });
+      });
 
-    // 🔹 Bağlantı hatası
-    socket.on("error", (err) => {
-      if (!responded) {
-        responded = true;
-        resolve(
-          NextResponse.json({
-            success: false,
-            error: "Bağlantı hatası: " + String(err.message),
-          })
-        );
-      }
-      socket.destroy();
-    });
+      socket.on("timeout", () => {
+        resolve({ success: false, error: "Zaman aşımı" });
+        socket.destroy();
+      });
 
-    // 🔹 Bağlanmayı dene
-    socket.connect(Number(port), ip);
-  });
+      socket.connect(Number(port), ip);
+    }
+  );
+
+  return NextResponse.json(result);
 }
