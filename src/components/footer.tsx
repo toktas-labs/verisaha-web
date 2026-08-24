@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Mail, MapPin, Phone, Linkedin, Youtube } from "lucide-react";
+import { Mail, MapPin, Phone, Linkedin } from "lucide-react";
 
 export default function Footer() {
   return (
@@ -32,11 +32,11 @@ export default function Footer() {
           <div>
             <h4 className="text-white font-semibold mb-3">Hizmetler</h4>
             <ul className="space-y-2 text-white/80">
-   		<li><Link className="hover:underline" href="/#solutions">Tüm Hizmetler</Link></li>
-    		<li><Link className="hover:underline" href="/cozumler//uzaktan-izleme">Uzaktan İzleme</Link></li>
-    		<li><Link className="hover:underline" href="/cozumler/proje-bazli">Proje Bazlı Çözümler</Link></li>
-    		<li><Link className="hover:underline" href="/cozumler/endustriyel-otomasyon">Endüstriyel Otomasyon</Link></li>
-    		<li><Link className="hover:underline" href="/cozumler/raporlama">Raporlama</Link></li>
+              <li><Link className="hover:underline" href="/#solutions">Tüm Hizmetler</Link></li>
+              <li><Link className="hover:underline" href="/cozumler/uzaktan-izleme">Uzaktan İzleme</Link></li>
+              <li><Link className="hover:underline" href="/cozumler/proje-bazli">Proje Bazlı Çözümler</Link></li>
+              <li><Link className="hover:underline" href="/cozumler/endustriyel-otomasyon">Endüstriyel Otomasyon</Link></li>
+              <li><Link className="hover:underline" href="/cozumler/raporlama">Raporlama</Link></li>
             </ul>
           </div>
 

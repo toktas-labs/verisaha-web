@@ -3,16 +3,44 @@ import { useState, useRef, useEffect } from "react";
 import { flushSync } from "react-dom";
 import TrendChart from "./TrendChart";
 
-// Web Serial API type fix
+type DataType =
+  | "signed"
+  | "unsigned"
+  | "hex"
+  | "float"
+  | "floatInverse"
+  | "double"
+  | "doubleInverse"
+  | "long"
+  | "longInverse";
+
+type SerialParity = "none" | "even" | "odd";
+
+interface VeriSahaSerialPort {
+  readonly readable: ReadableStream<Uint8Array> | null;
+  readonly writable: WritableStream<Uint8Array> | null;
+  open(options: {
+    baudRate: number;
+    dataBits: number;
+    parity: SerialParity;
+    stopBits: number;
+  }): Promise<void>;
+  close(): Promise<void>;
+}
+
+interface VeriSahaSerialApi {
+  requestPort(): Promise<VeriSahaSerialPort>;
+}
+
 declare global {
   interface Navigator {
-    serial: any;
+    serial: VeriSahaSerialApi;
   }
 }
 
-type SerialPort = any;
-type ReadableStreamDefaultReader<T> = any;
-type WritableStreamDefaultWriter<T = any> = any;
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 
 interface RegisterRow {
@@ -21,7 +49,7 @@ interface RegisterRow {
 }
 
 export default function ModbusRTU() {
-  const [port, setPort] = useState<SerialPort | null>(null);
+  const [port, setPort] = useState<VeriSahaSerialPort | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [registers, setRegisters] = useState<RegisterRow[]>([]);
   const [history, setHistory] = useState<(number | string)[][]>([]);
@@ -48,11 +76,26 @@ export default function ModbusRTU() {
   const lastAutoReadErrorRef = useRef<string | null>(null);
   const wasDisconnectedRef = useRef(false);
 
+  useEffect(() => {
+    return () => {
+      if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      if (firstResponseTimerRef.current) clearTimeout(firstResponseTimerRef.current);
+
+      scanIntervalRef.current = null;
+      pollingIntervalRef.current = null;
+      countdownRef.current = null;
+      firstResponseTimerRef.current = null;
+      pollingRef.current = false;
+    };
+  }, []);
+
 
   // connection settings
   const [baudRate, setBaudRate] = useState(38400);
   const [dataBits, setDataBits] = useState(8);
-  const [parity, setParity] = useState<"none" | "even" | "odd">("even");
+  const [parity, setParity] = useState<SerialParity>("even");
   const [stopBits, setStopBits] = useState(1);
 
   // read/write settings
@@ -62,19 +105,10 @@ export default function ModbusRTU() {
   const [address, setAddress] = useState(0);
   const [quantity, setQuantity] = useState(10);
   const [scanRate, setScanRate] = useState(1000);
-  const [dataType, setDataType] = useState<
-    | "signed"
-    | "unsigned"
-    | "hex"
-    | "float"
-    | "floatInverse"
-    | "double"
-    | "doubleInverse"
-    | "long"
-    | "longInverse"
-  >("signed");
+  const [dataType, setDataType] = useState<DataType>("signed");
 
   const isBitFunction = func === 1 || func === 2;
+  const settingsLocked = step !== "idle";
 
   const funcRef = useRef(func);
   useEffect(() => {
@@ -133,13 +167,14 @@ export default function ModbusRTU() {
         `✅ Modbus RTU bağlantısı kuruldu (${baudRate}, ${dataBits}${parity}, ${stopBits} stop)`,
       ]);
       startReader(selectedPort);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMessage = getErrorMessage(err);
       const msg =
-        err.message?.includes("open")
+        errorMessage.includes("open")
           ? "❌ Port zaten kullanımda veya uygun değil."
-          : err.message?.includes("NetworkError")
+          : errorMessage.includes("NetworkError")
           ? "❌ Port bağlantısı reddedildi veya kullanımda."
-          : "❌ Port açılamadı: " + err.message;
+          : "❌ Port açılamadı: " + errorMessage;
       setLog((p) => [...p, msg]);
       alert(msg);
     }
@@ -166,8 +201,8 @@ export default function ModbusRTU() {
       setStep("idle");
       setPolling(false);
       setLog((p) => [...p, "🔌 Port kapatıldı"]);
-    } catch (err: any) {
-      setLog((p) => [...p, "⚠️ Port kapatılamadı: " + err.message]);
+    } catch (err: unknown) {
+      setLog((p) => [...p, "⚠️ Port kapatılamadı: " + getErrorMessage(err)]);
     }
   }
 
@@ -192,17 +227,22 @@ export default function ModbusRTU() {
       .join(" ");
   }
 
-  async function startReader(selectedPort: SerialPort) {
+  async function startReader(selectedPort: VeriSahaSerialPort) {
     const reader = selectedPort.readable?.getReader();
     if (!reader) return;
     readerRef.current = reader;
 
     try {
       while (selectedPort.readable) {
-        const { value, done } = await reader.read().catch(() => ({ done: true }));
+        const { value, done } = await reader.read().catch(
+          (): ReadableStreamReadResult<Uint8Array> => ({
+            done: true,
+            value: new Uint8Array(0),
+          })
+        );
         if (done || !value) break;
 
-        console.log("MODBUS RX:", toHex(value));
+        if (process.env.NODE_ENV !== "production") console.debug("MODBUS RX:", toHex(value));
 
         const newBuffer = new Uint8Array(bufferRef.current.length + value.length);
         newBuffer.set(bufferRef.current);
@@ -211,8 +251,8 @@ export default function ModbusRTU() {
 
 	processBuffer();   // ← sadece bu
       }
-    } catch (err: any) {
-      const message = err?.message || "Cihaz yanıt vermiyor";
+    } catch (err: unknown) {
+      const message = getErrorMessage(err) || "Cihaz yanıt vermiyor";
 
       if (lastAutoReadErrorRef.current !== message) {
         setLog((p) => [
@@ -272,6 +312,19 @@ export default function ModbusRTU() {
     }
 
     setHasError(true);
+    setPolling(false);
+    pollingRef.current = false;
+    setStep("idle");
+
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
 
     console.log("MODBUS EXCEPTION:", desc);
 
@@ -471,17 +524,21 @@ export default function ModbusRTU() {
     const [crcLo, crcHi] = calcCRC(frame);
     const request = new Uint8Array([...frame, crcLo, crcHi]);
 
-    console.log("MODBUS TX:", toHex(request));
+    if (process.env.NODE_ENV !== "production") console.debug("MODBUS TX:", toHex(request));
 
-    let writer: WritableStreamDefaultWriter | null = null;
+    let writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
 
     try {
-      writer = port.writable?.getWriter();
-      if (!writer) throw new Error("Cannot create writer");
+      if (!port.writable) {
+        throw new Error("Cannot create writer");
+      }
+
+      writer = port.writable.getWriter();
 
       await writer.write(request);
-    } catch (err: any) {
-       const message = err?.message || "Unknown write error";
+
+    } catch (err: unknown) {
+       const message = getErrorMessage(err) || "Unknown write error";
 
       if (lastAutoReadErrorRef.current !== message) {
         setLog((p) => [
@@ -506,15 +563,18 @@ export default function ModbusRTU() {
     }
   }
 
-  /* ---------------- ONAYLA / KAYIT BAŞLAT / DURDUR ---------------- */
+  /* ---------------- OKUMAYI BAŞLAT / KAYIT / DURDUR ---------------- */
 
-  function onaylaAyarlar() {
+  function startReading() {
     try {
       setRegisters([]);
       setHistory([]);
       seqRef.current = 0;
+      setPolling(false);
+      pollingRef.current = false;
+      setHasError(false);
 
-      const typeLabelMap: Record<string, string> = {
+      const typeLabelMap: Record<DataType, string> = {
         signed: "SIGNED",
         unsigned: "UNSIGNED",
         hex: "HEX",
@@ -534,8 +594,8 @@ export default function ModbusRTU() {
       }
 
       setLog((p) => [
-        ...p,
-        `⚙️ Okuma ayarları (ID:${slaveId}, F:${func}, A:${address}, Q:${quantity}, ${
+        ...p.slice(-99),
+        `▶️ Canlı okuma başlatılıyor (ID:${slaveId}, F:${func}, A:${address}, Q:${quantity}, ${
           isBitFunction
             ? "BIT (0/1)"
             : typeLabelMap[dataType] || dataType.toUpperCase()
@@ -543,51 +603,66 @@ export default function ModbusRTU() {
       ]);
 
       lastErrorRef.current = null;
+      lastAutoReadErrorRef.current = null;
 
-      sendFrame().catch((err) =>
-        setLog((p) => [...p, "❌ İlk okuma hatası: " + err.message])
+      sendFrame().catch((err: unknown) =>
+        setLog((p) => [...p.slice(-99), "❌ İlk okuma hatası: " + getErrorMessage(err)])
       );
 
       if (firstResponseTimerRef.current) clearTimeout(firstResponseTimerRef.current);
 
       firstResponseTimerRef.current = setTimeout(() => {
-        if (!registers.length) {
-          setHasError(true);
-          setLog(p => [...p, "⛔ Timeout: Cihazdan cevap alınamadı. Bağlantı ayarlarını kontrol edin."]);
+        setHasError(true);
+        setStep("idle");
+        if (scanIntervalRef.current) {
+          clearInterval(scanIntervalRef.current);
+          scanIntervalRef.current = null;
         }
-      }, 2000); // 2 saniye
+        setLog((p) => [
+          ...p.slice(-99),
+          "⛔ Timeout: Cihazdan cevap alınamadı. Bağlantı ayarlarını kontrol edin."
+        ]);
+      }, 2000);
 
       if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
       scanIntervalRef.current = setInterval(() => {
-        sendFrame().catch((err) =>
-          setLog((p) => [...p, "⚠️ Otomatik okuma hatası: " + err.message])
+        sendFrame().catch((err: unknown) =>
+          setLog((p) => [...p.slice(-99), "⚠️ Otomatik okuma hatası: " + getErrorMessage(err)])
         );
       }, scanRate);
 
       setStep("confirmed");
-    } catch (err: any) {
-      setLog((p) => [...p, "❌ Onaylama hatası: " + err.message]);
+    } catch (err: unknown) {
+      setStep("idle");
+      setLog((p) => [...p.slice(-99), "❌ Okuma başlatma hatası: " + getErrorMessage(err)]);
     }
   }
 
   function startPolling() {
     if (!port) return;
-    if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-    if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
 
     setPolling(true);
+    pollingRef.current = true;
     setPollCount(0);
     seqRef.current = 0;
     setHistory([]);
-    setLog((p) => [...p, "▶️ Kayıt başladı"]);
+    setLog((p) => [...p.slice(-99), "▶️ Kayıt başladı"]);
 
     pollingIntervalRef.current = window.setInterval(async () => {
       try {
         seqRef.current += 1;
         setPollCount(seqRef.current);
         await sendFrame();
-      } catch (err: any) {
-        setLog((p) => [...p.slice(-99), "⚠️ Sorgu hatası: " + err.message]);
+      } catch (err: unknown) {
+        setLog((p) => [...p.slice(-99), "⚠️ Sorgu hatası: " + getErrorMessage(err)]);
       }
     }, scanRate);
 
@@ -595,21 +670,58 @@ export default function ModbusRTU() {
   }
 
   function stopPolling() {
-    if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
 
     setPolling(false);
-pollingRef.current = false; // 🧩 anında kapat
-    setLog((p) => [...p.slice(-99), "⏹ Kayıt durduruldu"]);
+    pollingRef.current = false;
+    setLog((p) => [
+      ...p.slice(-99),
+      "⏹ Kayıt durduruldu; canlı okuma devam ediyor."
+    ]);
 
     setStep("confirmed");
     seqRef.current = 0;
 
-    if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+
     scanIntervalRef.current = setInterval(() => {
-      sendFrame().catch((err) =>
-        setLog((p) => [...p.slice(-99), "⚠️ Otomatik okuma hatası (yeniden): " + err.message])
+      sendFrame().catch((err: unknown) =>
+        setLog((p) => [...p.slice(-99), "⚠️ Otomatik okuma hatası (yeniden): " + getErrorMessage(err)])
       );
     }, scanRate);
+  }
+
+  function stopReading() {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+
+    if (firstResponseTimerRef.current) {
+      clearTimeout(firstResponseTimerRef.current);
+      firstResponseTimerRef.current = null;
+    }
+
+    setPolling(false);
+    pollingRef.current = false;
+    setStep("idle");
+    seqRef.current = 0;
+
+    setLog((p) => [
+      ...p.slice(-99),
+      "⏹ Canlı okuma durduruldu."
+    ]);
   }
 
   /* ---------------- UI ---------------- */
@@ -653,7 +765,7 @@ pollingRef.current = false; // 🧩 anında kapat
               <label>Parity</label>
               <select
                 value={parity}
-                onChange={(e) => setParity(e.target.value as any)}
+                onChange={(e) => setParity(e.target.value as SerialParity)}
                 className="border rounded px-2 py-1 w-full"
               >
                 <option value="none">None</option>
@@ -703,7 +815,8 @@ pollingRef.current = false; // 🧩 anında kapat
                 type="number"
                 value={slaveId}
                 onChange={(e) => setSlaveId(Number(e.target.value))}
-                className="border p-1 rounded w-full"
+                disabled={settingsLocked}
+                className={`border p-1 rounded w-full ${settingsLocked ? "bg-gray-100 text-gray-500" : ""}`}
               />
             </div>
 
@@ -712,7 +825,8 @@ pollingRef.current = false; // 🧩 anında kapat
               <select
                 value={func}
                 onChange={(e) => setFunc(Number(e.target.value))}
-                className="border p-1 rounded w-full"
+                disabled={settingsLocked}
+                className={`border p-1 rounded w-full ${settingsLocked ? "bg-gray-100 text-gray-500" : ""}`}
               >
                 <option value={1}>01 - Read Coils</option>
                 <option value={2}>02 - Read Discrete Inputs</option>
@@ -727,7 +841,8 @@ pollingRef.current = false; // 🧩 anında kapat
                 type="number"
                 value={address}
                 onChange={(e) => setAddress(Number(e.target.value))}
-                className="border p-1 rounded w-full"
+                disabled={settingsLocked}
+                className={`border p-1 rounded w-full ${settingsLocked ? "bg-gray-100 text-gray-500" : ""}`}
               />
             </div>
 
@@ -737,7 +852,8 @@ pollingRef.current = false; // 🧩 anında kapat
                 type="number"
                 value={quantity}
                 onChange={(e) => setQuantity(Number(e.target.value))}
-                className="border p-1 rounded w-full"
+                disabled={settingsLocked}
+                className={`border p-1 rounded w-full ${settingsLocked ? "bg-gray-100 text-gray-500" : ""}`}
               />
             </div>
 
@@ -745,10 +861,10 @@ pollingRef.current = false; // 🧩 anında kapat
               <label>Data Type</label>
               <select
                 value={dataType}
-                onChange={(e) => setDataType(e.target.value as any)}
-                disabled={isBitFunction}
+                onChange={(e) => setDataType(e.target.value as DataType)}
+                disabled={isBitFunction || settingsLocked}
                 className={`border p-1 rounded w-full ${
-                  isBitFunction ? "bg-gray-100 text-gray-500" : ""
+                  isBitFunction || settingsLocked ? "bg-gray-100 text-gray-500" : ""
                 }`}
               >
                 {isBitFunction ? (
@@ -778,48 +894,59 @@ pollingRef.current = false; // 🧩 anında kapat
                 type="number"
                 value={scanRate}
                 onChange={(e) => setScanRate(Number(e.target.value))}
-                className="border p-1 rounded w-full"
+                disabled={settingsLocked}
+                className={`border p-1 rounded w-full ${settingsLocked ? "bg-gray-100 text-gray-500" : ""}`}
                 min={200}
               />
             </div>
           </div>
 
           {/* Kontrol Butonları */}
-          <div className="space-x-2">
-            <button
-              onClick={onaylaAyarlar}
-  	      disabled={polling}
-  	      title={polling ? "Kayıt devam ederken ayar değiştirilemez." : ""} // 🟢 tooltip eklendi
-  	      className={`px-3 py-2 rounded text-white transition ${
-                 polling
-                   ? "bg-gray-400 cursor-not-allowed"
-                   : "bg-green-600 hover:bg-green-700"
-               }`}
-            >
-              Onayla
-            </button>
-
-            {step === "confirmed" && !hasError && (
+          <div className="flex flex-wrap items-center gap-2">
+            {step === "idle" && (
               <button
-                onClick={startPolling}
-                disabled={polling}
-                className={`px-3 py-2 rounded text-white ${
-                  polling
-                    ? "bg-gray-500 cursor-not-allowed"
-                    : "bg-purple-600 hover:bg-purple-700"
-                }`}
+                onClick={startReading}
+                className="px-3 py-2 rounded text-white transition bg-green-600 hover:bg-green-700"
               >
-                {polling ? "Kayıt Devam Ediyor..." : "Kayıt Başlat"}
+                Okumayı Başlat
               </button>
             )}
 
+            {step === "confirmed" && !hasError && (
+              <>
+                <span className="px-3 py-2 rounded bg-green-50 text-green-700 border border-green-200 text-sm font-medium">
+                  🟢 Canlı Okuma Aktif
+                </span>
+
+                <button
+                  onClick={startPolling}
+                  className="px-3 py-2 rounded text-white bg-purple-600 hover:bg-purple-700"
+                >
+                  Kayıt Başlat
+                </button>
+
+                <button
+                  onClick={stopReading}
+                  className="px-3 py-2 rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-100"
+                >
+                  Okumayı Durdur
+                </button>
+              </>
+            )}
+
             {step === "recording" && (
-              <button
-                onClick={stopPolling}
-                className="px-3 py-2 rounded bg-red-600 text-white hover:bg-red-700"
-              >
-                Durdur
-              </button>
+              <>
+                <span className="px-3 py-2 rounded bg-red-50 text-red-700 border border-red-200 text-sm font-medium">
+                  🔴 Kayıt Yapılıyor
+                </span>
+
+                <button
+                  onClick={stopPolling}
+                  className="px-3 py-2 rounded bg-red-600 text-white hover:bg-red-700"
+                >
+                  Kaydı Durdur
+                </button>
+              </>
             )}
           </div>
 

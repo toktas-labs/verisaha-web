@@ -7,6 +7,21 @@ interface RegisterRow {
   decimal: number | string;
 }
 
+type DataType =
+  | "signed"
+  | "unsigned"
+  | "hex"
+  | "float"
+  | "floatInverse"
+  | "double"
+  | "doubleInverse"
+  | "long"
+  | "longInverse";
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 type ReadRequestResult =
   | "success"
   | "modbus_error"
@@ -26,17 +41,7 @@ export default function ModbusTCP() {
   const [address, setAddress] = useState(0);
   const [quantity, setQuantity] = useState(10);
   const [scanRate, setScanRate] = useState(1000);
-  const [dataType, setDataType] = useState<
-    | "signed"
-    | "unsigned"
-    | "hex"
-    | "float"
-    | "floatInverse"
-    | "double"
-    | "doubleInverse"
-    | "long"
-    | "longInverse"
-  >("signed");
+  const [dataType, setDataType] = useState<DataType>("signed");
 
   const logContainerRef = useRef<HTMLDivElement | null>(null);
   const autoScrollLogRef = useRef(true);
@@ -70,6 +75,7 @@ export default function ModbusTCP() {
   const [step, setStep] = useState<"idle" | "confirmed" | "recording">("idle");
   const [hasError, setHasError] = useState(false);
   const isBitFunction = func === 1 || func === 2;
+  const settingsLocked = step !== "idle";
   const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const requestInFlightRef = useRef(false);
   const requestVersionRef = useRef(0);
@@ -77,6 +83,18 @@ export default function ModbusTCP() {
   const pollingRef = useRef(false);
   useEffect(() => { pollingRef.current = polling; }, [polling]);
   const wasDisconnectedRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
+      }
+
+      requestVersionRef.current += 1;
+      pollingRef.current = false;
+    };
+  }, []);
 
 
   /* ---------------- TCP BAĞLANTI ---------------- */
@@ -109,8 +127,8 @@ export default function ModbusTCP() {
       setConnectionStatus("success");
       setConnectionMessage("Bağlantı başarılı!");
 
-    } catch (err: any) {
-      setLog((p) => [...p, "❌ Bağlantı hatası: " + String(err.message)]);
+    } catch (err: unknown) {
+      setLog((p) => [...p, "❌ Bağlantı hatası: " + getErrorMessage(err)]);
       setConnectionStatus("error");
       setConnectionMessage("Bağlantı hatası oluştu.");
     }
@@ -349,8 +367,17 @@ function parseBits(
           lastErrorRef.current = desc;
         }
 
-        // Modbus Exception bağlantı kopması değildir
+        // Hatalı Function/Address gibi bir Modbus Exception oluştuğunda
+        // aynı hatalı sorguyu otomatik olarak tekrar tekrar göndermeyelim.
         setHasError(true);
+        setPolling(false);
+        pollingRef.current = false;
+        setStep("idle");
+
+        if (scanIntervalRef.current) {
+          clearInterval(scanIntervalRef.current);
+          scanIntervalRef.current = null;
+        }
 
         return "modbus_error";
       }
@@ -370,7 +397,7 @@ function parseBits(
 
       setPolling(false);
       pollingRef.current = false;
-      setStep("confirmed");
+      setStep("idle");
 
       if (scanIntervalRef.current) {
         clearInterval(scanIntervalRef.current);
@@ -379,7 +406,7 @@ function parseBits(
 
       return "connection_error";
 
-    } catch (err: any) {
+    } catch {
 
       if (version !== requestVersionRef.current) {
         return "stale";
@@ -398,7 +425,7 @@ function parseBits(
 
       setPolling(false);
       pollingRef.current = false;
-      setStep("confirmed");
+      setStep("idle");
 
       if (scanIntervalRef.current) {
         clearInterval(scanIntervalRef.current);
@@ -412,28 +439,27 @@ function parseBits(
     }
   }
 
-  /* ---------------- ONAYLA / KAYIT BAŞLAT / DURDUR ---------------- */
+  /* ---------------- OKUMAYI BAŞLAT / KAYIT / DURDUR ---------------- */
 
-  async function onaylaAyarlar() {
+  async function startReading() {
     try {
-
-      // Eski taramayı önce durdur
       if (scanIntervalRef.current) {
         clearInterval(scanIntervalRef.current);
         scanIntervalRef.current = null;
       }
 
-      // Eski sorguların cevaplarını geçersiz kıl
       requestVersionRef.current += 1;
       const version = requestVersionRef.current;
 
       setRegisters([]);
       setHistory([]);
       setHasError(false);
+      setPolling(false);
+      pollingRef.current = false;
 
       lastErrorRef.current = null;
 
-      const typeLabelMap: Record<string, string> = {
+      const typeLabelMap: Record<DataType, string> = {
         signed: "SIGNED",
         unsigned: "UNSIGNED",
         hex: "HEX",
@@ -445,45 +471,43 @@ function parseBits(
         longInverse: "LONG (32-bit INT)",
       };
 
-      if (scanRate < 200) {
+      const safeScanRate = Math.max(scanRate, 500);
+
+      if (scanRate < 500) {
+        setScanRate(500);
         setLog((p) => [
           ...p.slice(-99),
-          "⚠️ Çok düşük scan rate kullanıyorsunuz (<200 ms). Gerçek Modbus cihazlarında timeout ve kopma sorunlarına yol açabilir."
+          "⚠️ Güvenlik ve sunucu yükü nedeniyle minimum scan rate 500 ms olarak uygulanır."
         ]);
       }
 
       setLog((p) => [
         ...p.slice(-99),
-        `⚙️ Okuma ayarları (ID:${slaveId}, F:${func}, A:${address}, Q:${quantity}, ${
+        `▶️ Canlı okuma başlatılıyor (ID:${slaveId}, F:${func}, A:${address}, Q:${quantity}, ${
           isBitFunction
             ? "BIT (0/1)"
             : typeLabelMap[dataType] || dataType.toUpperCase()
-        }, Scan:${scanRate}ms)`,
+        }, Scan:${safeScanRate}ms)`,
       ]);
 
       const result = await sendReadRequest(version);
 
+      if (result !== "success") {
+        setStep("idle");
+        return;
+      }
+
       setStep("confirmed");
-
-      // Gerçek bağlantı hatasında otomatik tarama başlatma
-      if (result === "connection_error") {
-        return;
-      }
-
-      // İlk sorgu Modbus Exception ise de hatalı sorguyu
-      // sürekli tekrar tekrar göndermeyelim.
-      if (result === "modbus_error") {
-        return;
-      }
 
       scanIntervalRef.current = setInterval(() => {
         void sendReadRequest(version);
-      }, scanRate);
+      }, safeScanRate);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
+      setStep("idle");
       setLog((p) => [
         ...p.slice(-99),
-        "❌ Onaylama hatası: " + err.message
+        "❌ Okuma başlatma hatası: " + getErrorMessage(err)
       ]);
     }
   }
@@ -496,7 +520,6 @@ function parseBits(
 
     setPolling(true);
     pollingRef.current = true;
-
     setHistory([]);
 
     setLog((p) => [
@@ -505,10 +528,11 @@ function parseBits(
     ]);
 
     const version = requestVersionRef.current;
+    const safeScanRate = Math.max(scanRate, 500);
 
     scanIntervalRef.current = setInterval(() => {
       void sendReadRequest(version);
-    }, scanRate);
+    }, safeScanRate);
 
     setStep("recording");
   }
@@ -524,18 +548,35 @@ function parseBits(
 
     setLog((p) => [
       ...p.slice(-99),
-      "⏹ Kayıt durduruldu"
+      "⏹ Kayıt durduruldu; canlı okuma devam ediyor."
     ]);
 
     setStep("confirmed");
 
-    // RTU referansı:
-    // kayıt durduktan sonra canlı okuma devam eder
     const version = requestVersionRef.current;
+    const safeScanRate = Math.max(scanRate, 500);
 
     scanIntervalRef.current = setInterval(() => {
       void sendReadRequest(version);
-    }, scanRate);
+    }, safeScanRate);
+  }
+
+  function stopReading() {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+
+    requestVersionRef.current += 1;
+
+    setPolling(false);
+    pollingRef.current = false;
+    setStep("idle");
+
+    setLog((p) => [
+      ...p.slice(-99),
+      "⏹ Canlı okuma durduruldu."
+    ]);
   }
 
   /* ---------------- UI ---------------- */
@@ -604,7 +645,8 @@ function parseBits(
                 type="number"
                 value={slaveId}
                 onChange={(e) => setSlaveId(Number(e.target.value))}
-                className="border p-1 rounded w-full"
+                disabled={settingsLocked}
+                className={`border p-1 rounded w-full ${settingsLocked ? "bg-gray-100 text-gray-500" : ""}`}
                 min={1}
                 max={247}
               />
@@ -614,7 +656,8 @@ function parseBits(
               <select
                 value={func}
                 onChange={(e) => setFunc(Number(e.target.value))}
-                className="border p-1 rounded w-full"
+                disabled={settingsLocked}
+                className={`border p-1 rounded w-full ${settingsLocked ? "bg-gray-100 text-gray-500" : ""}`}
               >
                 <option value={1}>01 - Read Coils</option>
                 <option value={2}>02 - Read Discrete Inputs</option>
@@ -628,7 +671,8 @@ function parseBits(
                 type="number"
                 value={address}
                 onChange={(e) => setAddress(Number(e.target.value))}
-                className="border p-1 rounded w-full"
+                disabled={settingsLocked}
+                className={`border p-1 rounded w-full ${settingsLocked ? "bg-gray-100 text-gray-500" : ""}`}
               />
             </div>
             <div>
@@ -637,17 +681,18 @@ function parseBits(
                 type="number"
                 value={quantity}
                 onChange={(e) => setQuantity(Number(e.target.value))}
-                className="border p-1 rounded w-full"
+                disabled={settingsLocked}
+                className={`border p-1 rounded w-full ${settingsLocked ? "bg-gray-100 text-gray-500" : ""}`}
               />
             </div>
             <div>
               <label>Data Type</label>
               <select
                 value={dataType}
-                onChange={(e) => setDataType(e.target.value as any)}
-                disabled={isBitFunction}
+                onChange={(e) => setDataType(e.target.value as DataType)}
+                disabled={isBitFunction || settingsLocked}
                 className={`border p-1 rounded w-full ${
-                  isBitFunction ? "bg-gray-100 text-gray-500" : ""
+                  isBitFunction || settingsLocked ? "bg-gray-100 text-gray-500" : ""
                 }`}
               >
                 {isBitFunction ? (
@@ -676,56 +721,59 @@ function parseBits(
                 type="number"
                 value={scanRate}
                 onChange={(e) => setScanRate(Number(e.target.value))}
-                className="border p-1 rounded w-full"
-                min={200}
+                disabled={settingsLocked}
+                className={`border p-1 rounded w-full ${settingsLocked ? "bg-gray-100 text-gray-500" : ""}`}
+                min={500}
               />
             </div>
           </div>
 
-          <div className="space-x-2">
-
-            <button
-              onClick={onaylaAyarlar}
-              disabled={polling}
-              title={
-                polling
-                  ? "Kayıt devam ederken ayar değiştirilemez."
-                  : ""
-              }
-              className={`px-3 py-2 rounded text-white transition ${
-                polling
-                  ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-green-600 hover:bg-green-700"
-              }`}
-            >
-              Onayla
-            </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {step === "idle" && (
+              <button
+                onClick={startReading}
+                className="px-3 py-2 rounded text-white transition bg-green-600 hover:bg-green-700"
+              >
+                Okumayı Başlat
+              </button>
+            )}
 
             {step === "confirmed" && !hasError && (
-              <button
-                onClick={startPolling}
-                disabled={polling}
-                className={`px-3 py-2 rounded text-white ${
-                  polling
-                    ? "bg-gray-500 cursor-not-allowed"
-                    : "bg-purple-600 hover:bg-purple-700"
-                }`}
-              >
-                {polling
-                  ? "Kayıt Devam Ediyor..."
-                  : "Kayıt Başlat"}
-              </button>
+              <>
+                <span className="px-3 py-2 rounded bg-green-50 text-green-700 border border-green-200 text-sm font-medium">
+                  🟢 Canlı Okuma Aktif
+                </span>
+
+                <button
+                  onClick={startPolling}
+                  className="px-3 py-2 rounded text-white bg-purple-600 hover:bg-purple-700"
+                >
+                  Kayıt Başlat
+                </button>
+
+                <button
+                  onClick={stopReading}
+                  className="px-3 py-2 rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-100"
+                >
+                  Okumayı Durdur
+                </button>
+              </>
             )}
 
             {step === "recording" && (
-              <button
-                onClick={stopPolling}
-                className="px-3 py-2 rounded bg-red-600 text-white hover:bg-red-700"
-              >
-                Durdur
-              </button>
-            )}
+              <>
+                <span className="px-3 py-2 rounded bg-red-50 text-red-700 border border-red-200 text-sm font-medium">
+                  🔴 Kayıt Yapılıyor
+                </span>
 
+                <button
+                  onClick={stopPolling}
+                  className="px-3 py-2 rounded bg-red-600 text-white hover:bg-red-700"
+                >
+                  Kaydı Durdur
+                </button>
+              </>
+            )}
           </div>
 
           {/* LOG ALANI */}

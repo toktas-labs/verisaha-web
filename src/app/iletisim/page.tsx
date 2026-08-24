@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Mail, Phone, MapPin, Clock, Linkedin, Instagram, Youtube } from "lucide-react";
+import { Mail, Phone, MapPin, Clock, Linkedin } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import ContactForm from "@/components/contact-form";
 

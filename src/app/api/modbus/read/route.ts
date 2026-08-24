@@ -1,9 +1,33 @@
-// 📁 src/app/api/modbus/read/route.ts
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import net from "net";
-const Modbus = require("jsmodbus");
+import * as Modbus from "jsmodbus";
+import {
+  getClientIp,
+  isRequestBodyTooLarge,
+  maskIp,
+  rateLimit,
+  rateLimitHeaders,
+  securityLog,
+  validateModbusReadRequest,
+} from "@/lib/request-security";
+
+
+const READ_RATE_LIMIT = 240;
+const READ_RATE_WINDOW_MS = 60_000;
+const MAX_BODY_BYTES = 4_096;
+const SOCKET_TIMEOUT_MS = 3_000;
+
+function shouldLogReadSuccess(): boolean {
+  const explicitSetting = process.env.SECURITY_LOG_READ_SUCCESS;
+
+  if (explicitSetting === "true") return true;
+  if (explicitSetting === "false") return false;
+
+  // Development'ta test için görünür, production'da varsayılan olarak sessiz.
+  return process.env.NODE_ENV !== "production";
+}
 
 function valuesToRaw(values: number[]) {
   const raw: number[] = [];
@@ -14,144 +38,233 @@ function valuesToRaw(values: number[]) {
   return raw;
 }
 
-function valuesToBits(values: any[], quantity: number) {
+function valuesToBits(values: unknown[], quantity: number) {
   return values
     .slice(0, quantity)
     .map((value) => (value === true || Number(value) !== 0 ? 1 : 0));
 }
 
 export async function POST(req: Request): Promise<Response> {
-  let jsonBody = null;
+  const clientIp = getClientIp(req);
+  const limit = rateLimit(
+    `modbus-read:${clientIp}`,
+    READ_RATE_LIMIT,
+    READ_RATE_WINDOW_MS
+  );
 
-  // JSON parse kontrolü
-  try {
-    jsonBody = await req.json();
-  } catch (e) {
+  if (!limit.allowed) {
+    securityLog(req, "modbus_read_rate_limited");
+
     return NextResponse.json(
-      { success: false, error: "Geçersiz veya boş JSON", code: 0 },
+      {
+        success: false,
+        error: "Çok fazla Modbus sorgusu gönderildi. Lütfen kısa süre sonra tekrar deneyin.",
+        code: 0,
+      },
+      {
+        status: 429,
+        headers: {
+          ...rateLimitHeaders(limit),
+          "Retry-After": String(limit.retryAfterSeconds),
+        },
+      }
+    );
+  }
+
+  if (isRequestBodyTooLarge(req, MAX_BODY_BYTES)) {
+    securityLog(req, "modbus_read_body_too_large");
+
+    return NextResponse.json(
+      { success: false, error: "İstek boyutu çok büyük.", code: 0 },
+      { status: 413 }
+    );
+  }
+
+  let body: unknown;
+
+  try {
+    body = await req.json();
+  } catch {
+    securityLog(req, "modbus_read_invalid_json");
+
+    return NextResponse.json(
+      { success: false, error: "Geçersiz veya boş JSON.", code: 0 },
       { status: 400 }
     );
   }
 
-  const { ip, port, slaveId, func, address, quantity } = jsonBody;
+  const requestData = validateModbusReadRequest(body);
 
-  // SOCKET + MODBUS async wrapper
-  const result = await new Promise<{ success: boolean; raw?: number[]; bits?: number[]; values?: any; error?: string; code?: number; }>(
-    (resolve) => {
-      const socket = new net.Socket();
-      const client = new Modbus.client.TCP(socket, slaveId || 1);
+  if (!requestData.ok) {
+    securityLog(req, "modbus_read_rejected", {
+      reason: requestData.error,
+    });
 
-      socket.setTimeout(3000);
+    return NextResponse.json(
+      { success: false, error: requestData.error, code: 0 },
+      { status: 400 }
+    );
+  }
 
-      socket.on("connect", async () => {
-        try {
-          let resp;
+  const { ip, port, slaveId, func, address, quantity } = requestData;
 
-          switch (Number(func)) {
-            case 1:
-              resp = await client.readCoils(address, quantity);
-              break;
-            case 2:
-              resp = await client.readDiscreteInputs(address, quantity);
-              break;
-            case 3:
-              resp = await client.readHoldingRegisters(address, quantity);
-              break;
-            case 4:
-              resp = await client.readInputRegisters(address, quantity);
-              break;
-            default:
-              throw new Error("Desteklenmeyen Function Code");
-          }
+  const result = await new Promise<{
+    success: boolean;
+    raw?: number[];
+    bits?: number[];
+    values?: unknown;
+    error?: string;
+    code?: number;
+  }>((resolve) => {
+    const socket = new net.Socket();
+    const client = new Modbus.client.TCP(socket, slaveId);
+    let settled = false;
 
-        const body = resp.response?._body;
+    const finish = (value: {
+      success: boolean;
+      raw?: number[];
+      bits?: number[];
+      values?: unknown;
+      error?: string;
+      code?: number;
+    }) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+      socket.destroy();
+    };
 
-        const values =
-          body?.valuesAsArray ||
-          body?._valuesAsArray ||
-          [];
+    socket.setTimeout(SOCKET_TIMEOUT_MS);
 
-        const functionCode = Number(func);
+    socket.once("connect", async () => {
+      try {
+        let resp;
 
-        // FC01 / FC02 = bit verisi
-        if (functionCode === 1 || functionCode === 2) {
-          const bits = valuesToBits(values, Number(quantity));
+        switch (func) {
+          case 1:
+            resp = await client.readCoils(address, quantity);
+            break;
+          case 2:
+            resp = await client.readDiscreteInputs(address, quantity);
+            break;
+          case 3:
+            resp = await client.readHoldingRegisters(address, quantity);
+            break;
+          case 4:
+            resp = await client.readInputRegisters(address, quantity);
+            break;
+        }
 
-          if (bits.length === 0 && Number(quantity) > 0) {
+        const responseBody = resp?.response?._body;
+        const values = responseBody?.valuesAsArray ?? responseBody?._valuesAsArray ?? [];
+
+        if (func === 1 || func === 2) {
+          const bits = valuesToBits(values, quantity);
+
+          if (bits.length === 0 && quantity > 0) {
             throw new Error("Cihazdan geçerli bit verisi alınamadı.");
           }
 
-          resolve({
-            success: true,
-            bits,
-            values: bits,
-          });
+          finish({ success: true, bits, values: bits });
+          return;
         }
 
-        // FC03 / FC04 = register verisi
-        else {
-          const raw = valuesToRaw(values.map((v: any) => Number(v)));
+        const numericValues = values.map((value: unknown) => Number(value));
+        const raw = valuesToRaw(numericValues);
 
-          if (raw.length === 0 && Number(quantity) > 0) {
-            throw new Error("Cihazdan geçerli register verisi alınamadı.");
-          }
-
-          resolve({
-            success: true,
-            raw,
-            values,
-          });
-        }
-        } catch (err: any) {
-          let code: number | undefined;
-
-          if (err.response?._body?._code !== undefined) {
-            code = err.response._body._code;
-          }
-
-          if (!code) {
-            const m = String(err.message).match(/Code\s*(\d+)/i);
-            if (m) code = Number(m[1]);
-          }
-
-          const map: Record<number, string> = {
-            1: "Illegal Function",
-            2: "Illegal Data Address",
-            3: "Illegal Data Value",
-            4: "Slave Device Failure",
-          };
-
-          const pretty = code
-            ? `Modbus Exception (Code ${code}) - ${map[code] || "Unknown Exception"}`
-            : err.message;
-
-          resolve({ success: false, error: pretty, code: code ?? 0 });
+        if (raw.length === 0 && quantity > 0) {
+          throw new Error("Cihazdan geçerli register verisi alınamadı.");
         }
 
-        socket.destroy();
-      });
+        finish({ success: true, raw, values: numericValues });
+      } catch (err: unknown) {
+        const error = err as {
+          message?: string;
+          response?: { _body?: { _code?: number } };
+        };
 
-      socket.on("error", (err) => {
-        resolve({
-          success: false,
-          error: "Bağlantı hatası: " + err.message,
-          code: 0,
+        let code: number | undefined;
+
+        if (error.response?._body?._code !== undefined) {
+          code = Number(error.response._body._code);
+        }
+
+        if (!code && error.message) {
+          const match = error.message.match(/Code\s*(\d+)/i);
+          if (match) code = Number(match[1]);
+        }
+
+        const exceptionMap: Record<number, string> = {
+          1: "Illegal Function",
+          2: "Illegal Data Address",
+          3: "Illegal Data Value",
+          4: "Slave Device Failure",
+        };
+
+        securityLog(req, "modbus_read_device_error", {
+          targetIp: maskIp(ip),
+          targetPort: port,
+          slaveId,
+          func,
+          address,
+          quantity,
+          modbusCode: code ?? 0,
+          internalError: error.message?.slice(0, 160),
         });
-        socket.destroy();
+
+        const publicError = code
+          ? `Modbus Exception (Code ${code}) - ${exceptionMap[code] || "Unknown Exception"}`
+          : "Modbus okuma işlemi başarısız oldu.";
+
+        finish({ success: false, error: publicError, code: code ?? 0 });
+      }
+    });
+
+    socket.once("error", (err) => {
+      securityLog(req, "modbus_read_connection_error", {
+        targetIp: maskIp(ip),
+        targetPort: port,
+        internalError: err.message.slice(0, 160),
       });
 
-      socket.on("timeout", () => {
-        resolve({
-          success: false,
-          error: "Zaman aşımı: cihaz yanıt vermedi.",
-          code: 0,
-        });
-        socket.destroy();
+      finish({
+        success: false,
+        error: "Bağlantı kurulamadı.",
+        code: 0,
+      });
+    });
+
+    socket.once("timeout", () => {
+      securityLog(req, "modbus_read_timeout", {
+        targetIp: maskIp(ip),
+        targetPort: port,
       });
 
-      socket.connect(Number(port), ip);
-    }
-  );
+      finish({
+        success: false,
+        error: "Zaman aşımı: cihaz yanıt vermedi.",
+        code: 0,
+      });
+    });
 
-  return NextResponse.json(result);
+    socket.connect(port, ip);
+  });
+
+  if (result.success && shouldLogReadSuccess()) {
+    securityLog(req, "modbus_read_success", {
+      targetIp: maskIp(ip),
+      targetPort: port,
+      slaveId,
+      func,
+      address,
+      quantity,
+    });
+  }
+
+  return NextResponse.json(result, {
+    headers: {
+      ...rateLimitHeaders(limit),
+      "Cache-Control": "no-store",
+    },
+  });
 }

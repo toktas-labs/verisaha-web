@@ -106,7 +106,7 @@ export default function TrendChart({
               }}
             />
             <Tooltip
-              formatter={(v: any) => (typeof v === "number" ? v.toFixed(3) : v)}
+              formatter={(v) => (typeof v === "number" ? v.toFixed(3) : v)}
               labelFormatter={(l) => `${l} s`}
             />
             <Legend />

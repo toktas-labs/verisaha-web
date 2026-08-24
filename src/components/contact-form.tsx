@@ -42,8 +42,6 @@ export default function ContactForm() {
       });
 
       const data = await res.json();
-      console.log("API response:", res.status, data);
-
       if (data?.success) {
         setOk("Mesajınız başarıyla gönderildi ✅");
         setErr(null);

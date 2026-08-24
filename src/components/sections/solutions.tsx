@@ -1,21 +1,26 @@
 // src/components/sections/solutions.tsx
 // 👇 mevcut dosyanın iyileştirilmiş sürümü
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import * as Lucide from "lucide-react";
+import { BarChart3, Cpu, Gauge, Settings, Smartphone, Wrench, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 
-const services = [
-  { key: "olcum-izleme", title: "Ölçüm İzleme", icon: "Gauge",
+const services: Array<{
+  key: string;
+  title: string;
+  icon: LucideIcon;
+  excerpt: string;
+}> = [
+  { key: "olcum-izleme", title: "Ölçüm İzleme", icon: Gauge,
     excerpt: "Akış, seviye, sıcaklık, basınç ve proses analitiği dâhil tüm ölçüm verilerini tek panelden izleyin." },
-  { key: "proje-bazli", title: "Proje Bazlı Çözümler", icon: "Settings",
+  { key: "proje-bazli", title: "Proje Bazlı Çözümler", icon: Settings,
     excerpt: "Batch & Set–Reset panoları, test sistemleri ve müşteri taleplerine özel tasarlanan çözümler." },
-  { key: "endustriyel-otomasyon", title: "Endüstriyel Otomasyon", icon: "Cpu",
+  { key: "endustriyel-otomasyon", title: "Endüstriyel Otomasyon", icon: Cpu,
     excerpt: "PLC, SCADA ve HMI sistemleriyle endüstriyel takip ve entegrasyon: S7-1200/1500 vb." },
-  { key: "raporlama", title: "Raporlama", icon: "BarChart3",
+  { key: "raporlama", title: "Raporlama", icon: BarChart3,
     excerpt: "Günlük, aylık ve yıllık raporlar; grafiksel takip ve PDF & Excel çıktıları ile kapsamlı raporlama." },
-  { key: "uzaktan-izleme", title: "Uzaktan İzleme", icon: "Smartphone",
+  { key: "uzaktan-izleme", title: "Uzaktan İzleme", icon: Smartphone,
     excerpt: "Sahadaki ölçüm cihazlarını web, mobil ve bilgisayar üzerinden anlık olarak izleyin ve yönetin." },
-  { key: "danismanlik", title: "Danışmanlık", icon: "Wrench",
+  { key: "danismanlik", title: "Danışmanlık", icon: Wrench,
     excerpt: "Keşif, kurulum, devreye alma ve eğitim ile uçtan uca uzmanlık desteği." },
 ];
 
@@ -30,7 +35,7 @@ export default function Solutions() {
 
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {services.map((svc) => {
-            const Icon = (Lucide as any)[svc.icon] || (Lucide as any).Wrench;
+            const Icon = svc.icon;
             return (
               <Card
                 key={svc.key}
