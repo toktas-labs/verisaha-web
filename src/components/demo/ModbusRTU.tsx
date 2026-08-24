@@ -73,6 +73,17 @@ export default function ModbusRTU() {
     | "longInverse"
   >("signed");
 
+
+  const funcRef = useRef(func);
+  useEffect(() => {
+    funcRef.current = func;
+  }, [func]);
+
+  const slaveIdRef = useRef(slaveId);
+  useEffect(() => {
+    slaveIdRef.current = slaveId;
+  }, [slaveId]);
+
   const dataTypeRef = useRef(dataType);
   useEffect(() => {
     dataTypeRef.current = dataType;
@@ -148,6 +159,12 @@ export default function ModbusRTU() {
     return [crc & 0xff, (crc >> 8) & 0xff];
   }
 
+  function toHex(data: Uint8Array | number[]): string {
+    return Array.from(data)
+      .map((b) => b.toString(16).toUpperCase().padStart(2, "0"))
+      .join(" ");
+  }
+
   async function startReader(selectedPort: SerialPort) {
     const reader = selectedPort.readable?.getReader();
     if (!reader) return;
@@ -158,12 +175,14 @@ export default function ModbusRTU() {
         const { value, done } = await reader.read().catch(() => ({ done: true }));
         if (done || !value) break;
 
+        console.log("MODBUS RX:", toHex(value));
+
         const newBuffer = new Uint8Array(bufferRef.current.length + value.length);
         newBuffer.set(bufferRef.current);
         newBuffer.set(value, bufferRef.current.length);
-        bufferRef.current = newBuffer;
+	bufferRef.current = newBuffer;
 
-        if (bufferRef.current.length >= 5) processBuffer();
+	processBuffer();   // ← sadece bu
       }
     } catch (err: any) {
       const message = err?.message || "Cihaz yanıt vermiyor";
@@ -195,47 +214,61 @@ export default function ModbusRTU() {
   function processBuffer() {
     const buf = bufferRef.current;
     if (!buf || buf.length < 3) return;
-    if (buf[0] !== slaveId) return;
+    if (buf[0] !== slaveIdRef.current) return;
 
     const funcCode = buf[1];
 
-    if (funcCode === func && buf.length >= 3) {
-      const byteCount = buf[2];
-      const expectedLength = 3 + byteCount + 2;
-      if (buf.length >= expectedLength) {
-        const fullPacket = buf.slice(0, expectedLength);
-        bufferRef.current = buf.slice(expectedLength);
-        handleResponse(fullPacket);
-        lastErrorRef.current = null;
-      }
-    } else if (funcCode & 0x80) { 
-        if (buf.length >= 5) {
-          const errorCode = buf[2];
-      
-          const errorMap: Record<number, string> = {
-            1: "Illegal Function",
-            2: "Illegal Data Address",
-            3: "Illegal Data Value",
-            4: "Slave Device Failure",
-          };
+  if (funcCode & 0x80) {
+    if (buf.length < 5) return;
 
-          const desc = `Modbus Exception (Code ${errorCode})${
-            errorMap[errorCode] ? ` - ${errorMap[errorCode]}` : ""
-          }`;
+    const errorCode = buf[2];
 
-          if (lastErrorRef.current !== desc) {
-            flushSync(() => setLog((p) => [...p, "❌ " + desc]));
-            lastErrorRef.current = desc;
-            setHasError(true);
-          }
-          if (firstResponseTimerRef.current) {
-            clearTimeout(firstResponseTimerRef.current);
-            firstResponseTimerRef.current = null;
-          }
-          bufferRef.current = buf.slice(5);
-      }
+    const errorMap: Record<number, string> = {
+      1: "Illegal Function",
+      2: "Illegal Data Address",
+      3: "Illegal Data Value",
+      4: "Slave Device Failure",
+    };
+
+    const desc = `Modbus Exception (Code ${errorCode})${
+      errorMap[errorCode] ? ` - ${errorMap[errorCode]}` : ""
+    }`;
+
+    if (firstResponseTimerRef.current) {
+      clearTimeout(firstResponseTimerRef.current);
+      firstResponseTimerRef.current = null;
     }
+
+    if (lastErrorRef.current !== desc) {
+      setLog((p) => [...p.slice(-99), `❌ ${desc}`]);
+      lastErrorRef.current = desc;
+    }
+
+    setHasError(true);
+
+    console.log("MODBUS EXCEPTION:", desc);
+
+    bufferRef.current = buf.slice(5);
+    processBuffer();
+    return;
   }
+
+  // Normal frame
+  const byteCount = buf[2];
+  const expectedLength = 3 + byteCount + 2;
+
+  // frame henüz tamamlanmadıysa hiçbir şey yapma
+  if (buf.length < expectedLength) return;
+
+  // tam frame
+  const fullPacket = buf.slice(0, expectedLength);
+  bufferRef.current = buf.slice(expectedLength);
+
+  handleResponse(fullPacket);
+
+  // kalan data varsa tekrar işle
+  processBuffer();
+}
 
   /* ---------------- VERİ AYRIŞTIRMA ---------------- */
   function handleResponse(value: Uint8Array) {
@@ -254,7 +287,7 @@ export default function ModbusRTU() {
       firstResponseTimerRef.current = null;
     }
 
-    if (value[1] !== func) return;
+    if (value[1] !== funcRef.current) return;
     const byteCount = value[2];
     const dataBytes = value.slice(3, 3 + byteCount);
     const regs: RegisterRow[] = [];
@@ -372,6 +405,8 @@ export default function ModbusRTU() {
     const [crcLo, crcHi] = calcCRC(frame);
     const request = new Uint8Array([...frame, crcLo, crcHi]);
 
+    console.log("MODBUS TX:", toHex(request));
+
     let writer: WritableStreamDefaultWriter | null = null;
 
     try {
@@ -379,7 +414,6 @@ export default function ModbusRTU() {
       if (!writer) throw new Error("Cannot create writer");
 
       await writer.write(request);
-
     } catch (err: any) {
        const message = err?.message || "Unknown write error";
 
@@ -390,7 +424,7 @@ export default function ModbusRTU() {
         ]);
         lastAutoReadErrorRef.current = message;
       }
-      wasDisconnectedRef.current = true; 
+      wasDisconnectedRef.current = true;
 
       flushSync(() => {
         setPolling(false);
@@ -795,9 +829,9 @@ pollingRef.current = false; // 🧩 anında kapat
               </tr>
             ))}
           </tbody>
-         </table> 
+         </table>
         </div>
-      )}   
+      )}
 
 	{/* Trend Alanı */}
        <div className="mt-6 space-y-6">
