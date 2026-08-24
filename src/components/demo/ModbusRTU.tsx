@@ -30,7 +30,8 @@ export default function ModbusRTU() {
   const [step, setStep] = useState<"idle" | "confirmed" | "recording">("idle");
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
-
+  const logContainerRef = useRef<HTMLDivElement | null>(null);
+  const autoScrollLogRef = useRef(true);
   const pollCountRef = useRef(0);
   const pollingIntervalRef = useRef<number | null>(null);
   const countdownRef = useRef<number | null>(null);
@@ -73,6 +74,7 @@ export default function ModbusRTU() {
     | "longInverse"
   >("signed");
 
+  const isBitFunction = func === 1 || func === 2;
 
   const funcRef = useRef(func);
   useEffect(() => {
@@ -83,6 +85,11 @@ export default function ModbusRTU() {
   useEffect(() => {
     slaveIdRef.current = slaveId;
   }, [slaveId]);
+
+  const quantityRef = useRef(quantity);
+  useEffect(() => {
+    quantityRef.current = quantity;
+  }, [quantity]);
 
   const dataTypeRef = useRef(dataType);
   useEffect(() => {
@@ -96,6 +103,24 @@ export default function ModbusRTU() {
   useEffect(() => {
     pollCountRef.current = pollCount;
   }, [pollCount]);
+
+  useEffect(() => {
+    const el = logContainerRef.current;
+
+    if (!el || !autoScrollLogRef.current) return;
+
+    el.scrollTop = el.scrollHeight;
+  }, [log]);
+
+  function handleLogScroll() {
+    const el = logContainerRef.current;
+    if (!el) return;
+
+    const distanceFromBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight;
+
+    autoScrollLogRef.current = distanceFromBottom < 30;
+  }
 
   /* ---------------- PORT İŞLEMLERİ ---------------- */
   async function connectPort() {
@@ -134,6 +159,8 @@ export default function ModbusRTU() {
         } catch {}
       }
       await port?.close();
+      setPort(null);
+
       setRegisters([]);
       setHistory([]);
       setStep("idle");
@@ -292,6 +319,45 @@ export default function ModbusRTU() {
     const dataBytes = value.slice(3, 3 + byteCount);
     const regs: RegisterRow[] = [];
 
+    // FC01 Read Coils / FC02 Read Discrete Inputs
+    if (funcRef.current === 1 || funcRef.current === 2) {
+      const bitCount = Math.min(
+        quantityRef.current,
+        dataBytes.length * 8
+      );
+
+      for (let bitIndex = 0; bitIndex < bitCount; bitIndex++) {
+        const byteIndex = Math.floor(bitIndex / 8);
+        const bitPosition = bitIndex % 8;
+
+        const bitValue =
+          (dataBytes[byteIndex] >> bitPosition) & 0x01;
+
+        regs.push({
+          index: addressRef.current + bitIndex,
+          decimal: bitValue,
+        });
+      }
+
+      setRegisters(regs);
+      setHasError(false);
+      lastErrorRef.current = null;
+      if (pollingRef.current) {
+        setHistory((prev) => {
+          const updated = [...prev];
+
+          regs.forEach((reg, idx) => {
+            const old = updated[idx] || [];
+            updated[idx] = [...old.slice(-10), reg.decimal];
+          });
+
+          return updated;
+        });
+      }
+
+      return;
+    }
+
     const typeByteSize =
       dataTypeRef.current === "double" || dataTypeRef.current === "doubleInverse"
         ? 8
@@ -374,8 +440,8 @@ export default function ModbusRTU() {
     }
 
     setRegisters(regs);
-
     setHasError(false);
+    lastErrorRef.current = null;
 
     if (pollingRef.current) {
       setHistory((prev) => {
@@ -470,7 +536,9 @@ export default function ModbusRTU() {
       setLog((p) => [
         ...p,
         `⚙️ Okuma ayarları (ID:${slaveId}, F:${func}, A:${address}, Q:${quantity}, ${
-          typeLabelMap[dataType] || dataType.toUpperCase()
+          isBitFunction
+            ? "BIT (0/1)"
+            : typeLabelMap[dataType] || dataType.toUpperCase()
         }, Scan:${scanRate}ms)`,
       ]);
 
@@ -678,17 +746,29 @@ pollingRef.current = false; // 🧩 anında kapat
               <select
                 value={dataType}
                 onChange={(e) => setDataType(e.target.value as any)}
-                className="border p-1 rounded w-full"
+                disabled={isBitFunction}
+                className={`border p-1 rounded w-full ${
+                  isBitFunction ? "bg-gray-100 text-gray-500" : ""
+                }`}
               >
-                <option value="signed">Signed (16-bit)</option>
-                <option value="unsigned">Unsigned (16-bit)</option>
-                <option value="hex">Hex (16-bit)</option>
-                <option value="floatInverse">Float (32-bit)</option>
-                <option value="float">Float Inverse (32-bit)</option>
-                <option value="doubleInverse">Double (64-bit)</option>
-                <option value="double">Double Inverse (64-bit)</option>
-                <option value="longInverse">Long (32-bit Int)</option>
-                <option value="long">Long Inverse (32-bit Int)</option>
+                {isBitFunction ? (
+                  <option value={dataType}>Bit (0/1)</option>
+                ) : (
+                  <>
+                    <option value="signed">Signed (16-bit)</option>
+                    <option value="unsigned">Unsigned (16-bit)</option>
+                    <option value="hex">Hex (16-bit)</option>
+
+                    <option value="floatInverse">Float (32-bit)</option>
+                    <option value="float">Float Inverse (32-bit)</option>
+
+                    <option value="doubleInverse">Double (64-bit)</option>
+                    <option value="double">Double Inverse (64-bit)</option>
+
+                    <option value="longInverse">Long (32-bit Int)</option>
+                    <option value="long">Long Inverse (32-bit Int)</option>
+                  </>
+                )}
               </select>
             </div>
 
@@ -751,7 +831,11 @@ pollingRef.current = false; // 🧩 anında kapat
             >
               Temizle
             </button>
-            <div className="bg-black text-green-400 font-mono text-sm p-2 rounded h-40 overflow-y-auto">
+            <div
+              ref={logContainerRef}
+              onScroll={handleLogScroll}
+              className="bg-black text-green-400 font-mono text-sm p-2 rounded h-40 overflow-y-auto"
+            >
               {log.map((line, idx) => (
                 <div key={idx}>{line}</div>
               ))}
@@ -767,9 +851,19 @@ pollingRef.current = false; // 🧩 anında kapat
           <thead>
           <tr className="bg-gray-200">
             <th className="border px-2 py-1">#</th>
-            <th className="border px-2 py-1">Register</th>
+            <th className="border px-2 py-1">
+              {func === 1
+                ? "Coil"
+                : func === 2
+                ? "Discrete Input"
+                : "Register"}
+            </th>
             <th className="border px-2 py-1">
                 {(() => {
+                  if (isBitFunction) {
+                    return "State (0/1)";
+                  }
+
                   switch (dataType) {
                     case "signed":
                       return "Decimal (Int16)";
@@ -815,13 +909,17 @@ pollingRef.current = false; // 🧩 anında kapat
                 </td>
                 <td className="border px-2 py-1 text-center">{r.index}</td>
                 <td className="border px-2 py-1 text-center">
-                  {typeof r.decimal === "number"
+                  {isBitFunction
+                    ? String(r.decimal)
+                    : typeof r.decimal === "number"
                     ? r.decimal.toFixed(2)
                     : r.decimal}
                 </td>
                 {Array.from({ length: 11 }).map((_, col) => (
                   <td key={col} className="border px-1 py-0.5 text-center text-[12px] whitespace-nowrap">
-                    {typeof history[idx]?.[col] === "number"
+                    {isBitFunction
+                      ? history[idx]?.[col] ?? "-"
+                      : typeof history[idx]?.[col] === "number"
                       ? Number(history[idx]?.[col]).toFixed(2)
                       : history[idx]?.[col] ?? "-"}
                   </td>
@@ -838,9 +936,13 @@ pollingRef.current = false; // 🧩 anında kapat
  	 {/* Eğer hiçbir satır seçilmediyse: tüm register'ların trendini göster */}
  	 {selectedIndex === null ? (
   	  <div>
-  	   <h3 className="text-lg font-semibold text-brand-navy mb-2">
-  	      📊 Tüm Register Trendleri
-   	   </h3>
+        <h3 className="text-lg font-semibold text-brand-navy mb-2">
+          📊 {func === 1
+            ? "Tüm Coil Trendleri"
+            : func === 2
+            ? "Tüm Discrete Input Trendleri"
+            : "Tüm Register Trendleri"}
+        </h3>
    	   <div className="grid md:grid-cols-2 gap-6">
   	      {registers.map((r, idx) =>
   	        history[idx] ? (
@@ -860,7 +962,11 @@ pollingRef.current = false; // 🧩 anında kapat
     <div>
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-lg font-semibold text-brand-navy">
-          Register {registers[selectedIndex].index} Trend
+          {func === 1
+            ? `Coil ${registers[selectedIndex].index} Trend`
+            : func === 2
+            ? `Discrete Input ${registers[selectedIndex].index} Trend`
+            : `Register ${registers[selectedIndex].index} Trend`}
         </h3>
         <button
           onClick={() => setSelectedIndex(null)}

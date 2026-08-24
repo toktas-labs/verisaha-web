@@ -7,6 +7,13 @@ interface RegisterRow {
   decimal: number | string;
 }
 
+type ReadRequestResult =
+  | "success"
+  | "modbus_error"
+  | "connection_error"
+  | "stale"
+  | "skipped";
+
 export default function ModbusTCP() {
   const [connected, setConnected] = useState(false);
   const [ipAddress, setIpAddress] = useState("192.168.1.100");
@@ -31,18 +38,41 @@ export default function ModbusTCP() {
     | "longInverse"
   >("signed");
 
+  const logContainerRef = useRef<HTMLDivElement | null>(null);
+  const autoScrollLogRef = useRef(true);
   const dataTypeRef = useRef(dataType);
   useEffect(() => {
     dataTypeRef.current = dataType;
   }, [dataType]);
+
+  useEffect(() => {
+    const el = logContainerRef.current;
+
+    if (!el || !autoScrollLogRef.current) return;
+
+    el.scrollTop = el.scrollHeight;
+  }, [log]);
+
+  function handleLogScroll() {
+    const el = logContainerRef.current;
+    if (!el) return;
+
+    const distanceFromBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight;
+
+    autoScrollLogRef.current = distanceFromBottom < 30;
+  }
 
   const [polling, setPolling] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<null | "success" | "error">(null);
   const [connectionMessage, setConnectionMessage] = useState("");
   const [step, setStep] = useState<"idle" | "confirmed" | "recording">("idle");
-
+  const [hasError, setHasError] = useState(false);
+  const isBitFunction = func === 1 || func === 2;
   const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const requestInFlightRef = useRef(false);
+  const requestVersionRef = useRef(0);
   const lastErrorRef = useRef<string | null>(null);
   const pollingRef = useRef(false);
   useEffect(() => { pollingRef.current = polling; }, [polling]);
@@ -173,34 +203,56 @@ function parseRegisters(rawBytes: number[], address: number) {
   return regs;
 }
 
-  const typeSize: any = {
-    signed: 2,
-    unsigned: 2,
-    hex: 2,
-
-    float: 4,
-    floatInverse: 4,
-  
-    double: 8,
-    doubleInverse: 8,
-
-    long: 4,
-    longInverse: 4,
-  };
+function parseBits(
+  bits: Array<number | boolean>,
+  address: number,
+  quantity: number
+): RegisterRow[] {
+  return bits.slice(0, quantity).map((bit, index) => ({
+    index: address + index,
+    decimal: bit === true || Number(bit) !== 0 ? 1 : 0,
+  }));
+}
 
   function disconnectTCP() {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+
+    requestVersionRef.current += 1;
+
     setConnected(false);
     setPolling(false);
+    pollingRef.current = false;
+
+    setConnectionStatus(null);
+    setConnectionMessage("");
+
+    setHasError(false);
     setRegisters([]);
     setHistory([]);
     setStep("idle");
-    if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-    setLog((p) => [...p, "🔴 Bağlantı sonlandırıldı"]);
+
+    lastErrorRef.current = null;
+    wasDisconnectedRef.current = false;
+
+    setLog((p) => [...p.slice(-99), "🔴 Bağlantı sonlandırıldı"]);
   }
 
   /* ---------------- OKUMA GÖNDERİMİ ---------------- */
 
-  async function sendReadRequest() {
+  async function sendReadRequest(
+    version = requestVersionRef.current
+  ): Promise<ReadRequestResult> {
+
+    // Önceki sorgu henüz bitmediyse yeni sorgu gönderme
+    if (requestInFlightRef.current) {
+      return "skipped";
+    }
+
+    requestInFlightRef.current = true;
+
     try {
       const res = await fetch("/api/modbus/read", {
         method: "POST",
@@ -217,44 +269,146 @@ function parseRegisters(rawBytes: number[], address: number) {
 
       const json = await res.json();
 
-      if (json.success && Array.isArray(json.raw)) {
-	if (wasDisconnectedRef.current) {
-	  setLog((p) => [...p, "🔄 Bağlantı yeniden sağlandı."]);
-	  wasDisconnectedRef.current = false;
-	}
-        const regs = parseRegisters(json.raw, address);
+      // Bu cevap eski ayarlara aitse artık işleme
+      if (version !== requestVersionRef.current) {
+        return "stale";
+      }
+
+      /* ---------- BAŞARILI MODBUS CEVABI ---------- */
+      if (json.success) {
+
+        if (wasDisconnectedRef.current) {
+          setLog((p) => [
+            ...p.slice(-99),
+            "🔄 Bağlantı yeniden sağlandı."
+          ]);
+
+          wasDisconnectedRef.current = false;
+        }
+
+        let regs: RegisterRow[] = [];
+
+        if (func === 1 || func === 2) {
+          if (!Array.isArray(json.bits)) {
+            throw new Error("Geçersiz bit cevabı alındı.");
+          }
+
+          regs = parseBits(json.bits, address, quantity);
+        } else {
+          if (!Array.isArray(json.raw)) {
+            throw new Error("Geçersiz register cevabı alındı.");
+          }
+
+          regs = parseRegisters(json.raw, address);
+        }
+
         setRegisters(regs);
+        setHasError(false);
+
         lastErrorRef.current = null;
 
         if (pollingRef.current) {
-          setHistory(prev => {
+          setHistory((prev) => {
             const updated = [...prev];
+
             regs.forEach((reg, idx) => {
               const old = updated[idx] || [];
               updated[idx] = [...old.slice(-10), reg.decimal];
             });
+
             return updated;
           });
         }
-      } 
-      else if (json.success === false) {
-  	if (!wasDisconnectedRef.current) {
-   	    setLog((p) => [...p, "⛔ Bağlantı koptu: Cihaz yanıt vermiyor."]);
-  	    wasDisconnectedRef.current = true;
-  	}
-  	setPolling(false);
-  	pollingRef.current = false;
-  	setStep("confirmed");
-      }
-    } catch (err: any) {
-       if (!wasDisconnectedRef.current) {
-	 setLog((p) => [...p, "⛔ Bağlantı koptu: Cihaz yanıt vermiyor."]);
-	 wasDisconnectedRef.current = true;
-       }
 
-       setPolling(false);
-       pollingRef.current = false;
-       setStep("confirmed");
+        return "success";
+      }
+
+      /* ---------- MODBUS EXCEPTION ---------- */
+      const errorCode = Number(json.code ?? 0);
+
+      if (errorCode > 0) {
+        const errorMap: Record<number, string> = {
+          1: "Illegal Function",
+          2: "Illegal Data Address",
+          3: "Illegal Data Value",
+          4: "Slave Device Failure",
+        };
+
+        const desc =
+          json.error ||
+          `Modbus Exception (Code ${errorCode}) - ${
+            errorMap[errorCode] || "Unknown Exception"
+          }`;
+
+        if (lastErrorRef.current !== desc) {
+          setLog((p) => [
+            ...p.slice(-99),
+            `❌ ${desc}`
+          ]);
+
+          lastErrorRef.current = desc;
+        }
+
+        // Modbus Exception bağlantı kopması değildir
+        setHasError(true);
+
+        return "modbus_error";
+      }
+
+      /* ---------- GERÇEK TCP / TIMEOUT HATASI ---------- */
+
+      if (!wasDisconnectedRef.current) {
+        setLog((p) => [
+          ...p.slice(-99),
+          "⛔ Bağlantı koptu: Cihazdan veri alınamadı. Ağ bağlantısını ve cihazı kontrol edin."
+        ]);
+
+        wasDisconnectedRef.current = true;
+      }
+
+      setHasError(true);
+
+      setPolling(false);
+      pollingRef.current = false;
+      setStep("confirmed");
+
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
+      }
+
+      return "connection_error";
+
+    } catch (err: any) {
+
+      if (version !== requestVersionRef.current) {
+        return "stale";
+      }
+
+      if (!wasDisconnectedRef.current) {
+        setLog((p) => [
+          ...p.slice(-99),
+          "⛔ Bağlantı koptu: Cihazdan veri alınamadı. Ağ bağlantısını ve cihazı kontrol edin."
+        ]);
+
+        wasDisconnectedRef.current = true;
+      }
+
+      setHasError(true);
+
+      setPolling(false);
+      pollingRef.current = false;
+      setStep("confirmed");
+
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
+      }
+
+      return "connection_error";
+
+    } finally {
+      requestInFlightRef.current = false;
     }
   }
 
@@ -262,15 +416,22 @@ function parseRegisters(rawBytes: number[], address: number) {
 
   async function onaylaAyarlar() {
     try {
+
+      // Eski taramayı önce durdur
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
+      }
+
+      // Eski sorguların cevaplarını geçersiz kıl
+      requestVersionRef.current += 1;
+      const version = requestVersionRef.current;
+
       setRegisters([]);
       setHistory([]);
+      setHasError(false);
 
-      if (scanRate < 200) {
-        setLog((p) => [
-          ...p.slice(-99),
-          "⚠️ Çok düşük scan rate kullanıyorsunuz (<200 ms). Gerçek Modbus cihazlarında timeout ve kopma sorunlarına yol açabilir."
-        ]);
-      }
+      lastErrorRef.current = null;
 
       const typeLabelMap: Record<string, string> = {
         signed: "SIGNED",
@@ -284,44 +445,97 @@ function parseRegisters(rawBytes: number[], address: number) {
         longInverse: "LONG (32-bit INT)",
       };
 
+      if (scanRate < 200) {
+        setLog((p) => [
+          ...p.slice(-99),
+          "⚠️ Çok düşük scan rate kullanıyorsunuz (<200 ms). Gerçek Modbus cihazlarında timeout ve kopma sorunlarına yol açabilir."
+        ]);
+      }
+
       setLog((p) => [
-        ...p,
+        ...p.slice(-99),
         `⚙️ Okuma ayarları (ID:${slaveId}, F:${func}, A:${address}, Q:${quantity}, ${
-          typeLabelMap[dataType] || dataType.toUpperCase()
+          isBitFunction
+            ? "BIT (0/1)"
+            : typeLabelMap[dataType] || dataType.toUpperCase()
         }, Scan:${scanRate}ms)`,
       ]);
 
-     await sendReadRequest();
-
-      if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-
-      scanIntervalRef.current = setInterval(() => {
-        sendReadRequest().catch((err) =>
-          setLog((p) => [...p, "⚠️ Otomatik okuma hatası: " + err.message])
-        );
-      }, scanRate);
+      const result = await sendReadRequest(version);
 
       setStep("confirmed");
+
+      // Gerçek bağlantı hatasında otomatik tarama başlatma
+      if (result === "connection_error") {
+        return;
+      }
+
+      // İlk sorgu Modbus Exception ise de hatalı sorguyu
+      // sürekli tekrar tekrar göndermeyelim.
+      if (result === "modbus_error") {
+        return;
+      }
+
+      scanIntervalRef.current = setInterval(() => {
+        void sendReadRequest(version);
+      }, scanRate);
+
     } catch (err: any) {
-      setLog((p) => [...p, "❌ Onaylama hatası: " + err.message]);
+      setLog((p) => [
+        ...p.slice(-99),
+        "❌ Onaylama hatası: " + err.message
+      ]);
     }
   }
 
   function startPolling() {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+
     setPolling(true);
-    setLog((p) => [...p, "▶️ Kayıt başladı"]);
-    if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-    scanIntervalRef.current = setInterval(sendReadRequest, scanRate);
+    pollingRef.current = true;
+
+    setHistory([]);
+
+    setLog((p) => [
+      ...p.slice(-99),
+      "▶️ Kayıt başladı"
+    ]);
+
+    const version = requestVersionRef.current;
+
+    scanIntervalRef.current = setInterval(() => {
+      void sendReadRequest(version);
+    }, scanRate);
+
     setStep("recording");
   }
 
   function stopPolling() {
-    if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
 
     setPolling(false);
-    pollingRef.current = false; 
-    setLog((p) => [...p.slice(-99), "⏹ Kayıt durduruldu"]);
+    pollingRef.current = false;
+
+    setLog((p) => [
+      ...p.slice(-99),
+      "⏹ Kayıt durduruldu"
+    ]);
+
     setStep("confirmed");
+
+    // RTU referansı:
+    // kayıt durduktan sonra canlı okuma devam eder
+    const version = requestVersionRef.current;
+
+    scanIntervalRef.current = setInterval(() => {
+      void sendReadRequest(version);
+    }, scanRate);
   }
 
   /* ---------------- UI ---------------- */
@@ -431,20 +645,29 @@ function parseRegisters(rawBytes: number[], address: number) {
               <select
                 value={dataType}
                 onChange={(e) => setDataType(e.target.value as any)}
-                className="border p-1 rounded w-full"
+                disabled={isBitFunction}
+                className={`border p-1 rounded w-full ${
+                  isBitFunction ? "bg-gray-100 text-gray-500" : ""
+                }`}
               >
-              <option value="unsigned">Signed (16-bit)</option>
-              <option value="signed">Unsigned (16-bit)</option>
-              <option value="hex">Hex (16-bit)</option>
+                {isBitFunction ? (
+                  <option value={dataType}>Bit (0/1)</option>
+                ) : (
+                  <>
+                    <option value="signed">Signed (16-bit)</option>
+                    <option value="unsigned">Unsigned (16-bit)</option>
+                    <option value="hex">Hex (16-bit)</option>
 
-              <option value="float">Float Inverse (32-bit)</option>
-              <option value="floatInverse">Float (32-bit)</option>
+                    <option value="float">Float Inverse (32-bit)</option>
+                    <option value="floatInverse">Float (32-bit)</option>
 
-              <option value="double">Double Inverse (64-bit)</option>
-              <option value="doubleInverse">Double (64-bit)</option>
+                    <option value="double">Double Inverse (64-bit)</option>
+                    <option value="doubleInverse">Double (64-bit)</option>
 
-              <option value="long">Long Inverse (32-bit Int)</option>
-              <option value="longInverse">Long (32-bit Int)</option>
+                    <option value="long">Long Inverse (32-bit Int)</option>
+                    <option value="longInverse">Long (32-bit Int)</option>
+                  </>
+                )}
               </select>
             </div>
             <div>
@@ -460,23 +683,41 @@ function parseRegisters(rawBytes: number[], address: number) {
           </div>
 
           <div className="space-x-2">
+
             <button
               onClick={onaylaAyarlar}
               disabled={polling}
-              className={`px-3 py-2 rounded text-white ${
-                polling ? "bg-gray-400" : "bg-green-600 hover:bg-green-700"
+              title={
+                polling
+                  ? "Kayıt devam ederken ayar değiştirilemez."
+                  : ""
+              }
+              className={`px-3 py-2 rounded text-white transition ${
+                polling
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-green-600 hover:bg-green-700"
               }`}
             >
               Onayla
             </button>
-            {!polling ? (
+
+            {step === "confirmed" && !hasError && (
               <button
                 onClick={startPolling}
-                className="px-3 py-2 rounded bg-purple-600 text-white hover:bg-purple-700"
+                disabled={polling}
+                className={`px-3 py-2 rounded text-white ${
+                  polling
+                    ? "bg-gray-500 cursor-not-allowed"
+                    : "bg-purple-600 hover:bg-purple-700"
+                }`}
               >
-                Kayıt Başlat
+                {polling
+                  ? "Kayıt Devam Ediyor..."
+                  : "Kayıt Başlat"}
               </button>
-            ) : (
+            )}
+
+            {step === "recording" && (
               <button
                 onClick={stopPolling}
                 className="px-3 py-2 rounded bg-red-600 text-white hover:bg-red-700"
@@ -484,6 +725,7 @@ function parseRegisters(rawBytes: number[], address: number) {
                 Durdur
               </button>
             )}
+
           </div>
 
           {/* LOG ALANI */}
@@ -494,7 +736,11 @@ function parseRegisters(rawBytes: number[], address: number) {
             >
               Temizle
             </button>
-            <div className="bg-black text-green-400 font-mono text-sm p-2 rounded h-40 overflow-y-auto">
+            <div
+              ref={logContainerRef}
+              onScroll={handleLogScroll}
+              className="bg-black text-green-400 font-mono text-sm p-2 rounded h-40 overflow-y-auto"
+            >
               {log.map((line, idx) => (
                 <div key={idx}>{line}</div>
               ))}
@@ -508,9 +754,19 @@ function parseRegisters(rawBytes: number[], address: number) {
                 <thead>
                   <tr className="bg-gray-200">
                     <th className="border px-2 py-1">#</th>
-                    <th className="border px-2 py-1">Register</th>
+                    <th className="border px-2 py-1">
+                      {func === 1
+                        ? "Coil"
+                        : func === 2
+                        ? "Discrete Input"
+                        : "Register"}
+                    </th>
                     <th className="border px-2 py-1">
                       {(() => {
+                        if (isBitFunction) {
+                          return "State (0/1)";
+                        }
+
                         switch (dataType) {
                           case "signed":
                             return "Decimal (Int16)";
@@ -555,15 +811,19 @@ function parseRegisters(rawBytes: number[], address: number) {
                       </td>
                       <td className="border text-center">{r.index}</td>
                       <td className="border text-center">
-                        {typeof r.decimal === "number"
+                        {isBitFunction
+                          ? String(r.decimal)
+                          : typeof r.decimal === "number"
                           ? r.decimal.toFixed(2)
                           : r.decimal}
                       </td>
                       {Array.from({ length: 11 }).map((_, col) => (
                         <td key={col} className="border text-center text-[12px]">
-                          {typeof history[idx]?.[col] === "number"
-                            ? Number(history[idx]?.[col]).toFixed(2)
-                            : history[idx]?.[col] ?? "-"}
+                        {isBitFunction
+                          ? history[idx]?.[col] ?? "-"
+                          : typeof history[idx]?.[col] === "number"
+                          ? Number(history[idx]?.[col]).toFixed(2)
+                          : history[idx]?.[col] ?? "-"}
                         </td>
                       ))}
                     </tr>
@@ -578,7 +838,11 @@ function parseRegisters(rawBytes: number[], address: number) {
             {selectedIndex === null ? (
               <div>
                 <h3 className="text-lg font-semibold text-brand-navy mb-2">
-                  📊 Tüm Register Trendleri
+                  📊 {func === 1
+                    ? "Tüm Coil Trendleri"
+                    : func === 2
+                    ? "Tüm Discrete Input Trendleri"
+                    : "Tüm Register Trendleri"}
                 </h3>
                 <div className="grid md:grid-cols-2 gap-6">
                   {registers.map((r, idx) =>
@@ -598,7 +862,11 @@ function parseRegisters(rawBytes: number[], address: number) {
               <div>
                 <div className="flex justify-between mb-2">
                   <h3 className="text-lg font-semibold text-brand-navy">
-                    Register {registers[selectedIndex].index} Trend
+                    {func === 1
+                      ? `Coil ${registers[selectedIndex].index} Trend`
+                      : func === 2
+                      ? `Discrete Input ${registers[selectedIndex].index} Trend`
+                      : `Register ${registers[selectedIndex].index} Trend`}
                   </h3>
                   <button
                     onClick={() => setSelectedIndex(null)}

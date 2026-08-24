@@ -14,6 +14,12 @@ function valuesToRaw(values: number[]) {
   return raw;
 }
 
+function valuesToBits(values: any[], quantity: number) {
+  return values
+    .slice(0, quantity)
+    .map((value) => (value === true || Number(value) !== 0 ? 1 : 0));
+}
+
 export async function POST(req: Request): Promise<Response> {
   let jsonBody = null;
 
@@ -30,7 +36,7 @@ export async function POST(req: Request): Promise<Response> {
   const { ip, port, slaveId, func, address, quantity } = jsonBody;
 
   // SOCKET + MODBUS async wrapper
-  const result = await new Promise<{ success: boolean; raw?: number[]; values?: any; error?: string; code?: number; }>(
+  const result = await new Promise<{ success: boolean; raw?: number[]; bits?: number[]; values?: any; error?: string; code?: number; }>(
     (resolve) => {
       const socket = new net.Socket();
       const client = new Modbus.client.TCP(socket, slaveId || 1);
@@ -58,16 +64,44 @@ export async function POST(req: Request): Promise<Response> {
               throw new Error("Desteklenmeyen Function Code");
           }
 
-          const body = resp.response?._body;
+        const body = resp.response?._body;
 
-          const values =
-            body?.valuesAsArray ||
-            body?._valuesAsArray ||
-            [];
+        const values =
+          body?.valuesAsArray ||
+          body?._valuesAsArray ||
+          [];
 
-          const raw = valuesToRaw(values);
+        const functionCode = Number(func);
 
-          resolve({ success: true, raw, values });
+        // FC01 / FC02 = bit verisi
+        if (functionCode === 1 || functionCode === 2) {
+          const bits = valuesToBits(values, Number(quantity));
+
+          if (bits.length === 0 && Number(quantity) > 0) {
+            throw new Error("Cihazdan geçerli bit verisi alınamadı.");
+          }
+
+          resolve({
+            success: true,
+            bits,
+            values: bits,
+          });
+        }
+
+        // FC03 / FC04 = register verisi
+        else {
+          const raw = valuesToRaw(values.map((v: any) => Number(v)));
+
+          if (raw.length === 0 && Number(quantity) > 0) {
+            throw new Error("Cihazdan geçerli register verisi alınamadı.");
+          }
+
+          resolve({
+            success: true,
+            raw,
+            values,
+          });
+        }
         } catch (err: any) {
           let code: number | undefined;
 
