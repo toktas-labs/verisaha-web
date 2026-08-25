@@ -1,23 +1,39 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import net from "net";
+import net from "node:net";
 import * as Modbus from "jsmodbus";
 import {
   getClientIp,
-  isRequestBodyTooLarge,
   maskIp,
+  parseJsonBody,
   rateLimit,
   rateLimitHeaders,
   securityLog,
   validateModbusReadRequest,
 } from "@/lib/request-security";
 
-
 const READ_RATE_LIMIT = 240;
 const READ_RATE_WINDOW_MS = 60_000;
 const MAX_BODY_BYTES = 4_096;
 const SOCKET_TIMEOUT_MS = 3_000;
+
+function jsonResponse(
+  body: unknown,
+  init: ResponseInit = {},
+  extraHeaders: HeadersInit = {}
+): Response {
+  const headers = new Headers(init.headers);
+  headers.set("Cache-Control", "no-store");
+
+  const additions = new Headers(extraHeaders);
+  additions.forEach((value, key) => headers.set(key, value));
+
+  return NextResponse.json(body, {
+    ...init,
+    headers,
+  });
+}
 
 function shouldLogReadSuccess(): boolean {
   const explicitSetting = process.env.SECURITY_LOG_READ_SUCCESS;
@@ -25,20 +41,19 @@ function shouldLogReadSuccess(): boolean {
   if (explicitSetting === "true") return true;
   if (explicitSetting === "false") return false;
 
-  // Development'ta test için görünür, production'da varsayılan olarak sessiz.
   return process.env.NODE_ENV !== "production";
 }
 
-function valuesToRaw(values: number[]) {
+function valuesToRaw(values: number[]): number[] {
   const raw: number[] = [];
-  for (const val of values) {
-    raw.push((val >> 8) & 0xff);
-    raw.push(val & 0xff);
+  for (const value of values) {
+    raw.push((value >> 8) & 0xff);
+    raw.push(value & 0xff);
   }
   return raw;
 }
 
-function valuesToBits(values: unknown[], quantity: number) {
+function valuesToBits(values: unknown[], quantity: number): number[] {
   return values
     .slice(0, quantity)
     .map((value) => (value === true || Number(value) !== 0 ? 1 : 0));
@@ -55,54 +70,46 @@ export async function POST(req: Request): Promise<Response> {
   if (!limit.allowed) {
     securityLog(req, "modbus_read_rate_limited");
 
-    return NextResponse.json(
+    return jsonResponse(
       {
         success: false,
-        error: "Çok fazla Modbus sorgusu gönderildi. Lütfen kısa süre sonra tekrar deneyin.",
+        error:
+          "Çok fazla Modbus sorgusu gönderildi. Lütfen kısa süre sonra tekrar deneyin.",
         code: 0,
       },
+      { status: 429 },
       {
-        status: 429,
-        headers: {
-          ...rateLimitHeaders(limit),
-          "Retry-After": String(limit.retryAfterSeconds),
-        },
+        ...rateLimitHeaders(limit),
+        "Retry-After": String(limit.retryAfterSeconds),
       }
     );
   }
 
-  if (isRequestBodyTooLarge(req, MAX_BODY_BYTES)) {
-    securityLog(req, "modbus_read_body_too_large");
+  const parsed = await parseJsonBody(req, MAX_BODY_BYTES);
+  if (!parsed.ok) {
+    securityLog(req, "modbus_read_invalid_request", {
+      status: parsed.status,
+      reason: parsed.error,
+    });
 
-    return NextResponse.json(
-      { success: false, error: "İstek boyutu çok büyük.", code: 0 },
-      { status: 413 }
+    return jsonResponse(
+      { success: false, error: parsed.error, code: 0 },
+      { status: parsed.status },
+      rateLimitHeaders(limit)
     );
   }
 
-  let body: unknown;
-
-  try {
-    body = await req.json();
-  } catch {
-    securityLog(req, "modbus_read_invalid_json");
-
-    return NextResponse.json(
-      { success: false, error: "Geçersiz veya boş JSON.", code: 0 },
-      { status: 400 }
-    );
-  }
-
-  const requestData = validateModbusReadRequest(body);
+  const requestData = validateModbusReadRequest(parsed.body);
 
   if (!requestData.ok) {
     securityLog(req, "modbus_read_rejected", {
       reason: requestData.error,
     });
 
-    return NextResponse.json(
+    return jsonResponse(
       { success: false, error: requestData.error, code: 0 },
-      { status: 400 }
+      { status: 400 },
+      rateLimitHeaders(limit)
     );
   }
 
@@ -112,7 +119,7 @@ export async function POST(req: Request): Promise<Response> {
     success: boolean;
     raw?: number[];
     bits?: number[];
-    values?: unknown;
+    values?: number[];
     error?: string;
     code?: number;
   }>((resolve) => {
@@ -124,7 +131,7 @@ export async function POST(req: Request): Promise<Response> {
       success: boolean;
       raw?: number[];
       bits?: number[];
-      values?: unknown;
+      values?: number[];
       error?: string;
       code?: number;
     }) => {
@@ -138,25 +145,26 @@ export async function POST(req: Request): Promise<Response> {
 
     socket.once("connect", async () => {
       try {
-        let resp;
+        let response;
 
         switch (func) {
           case 1:
-            resp = await client.readCoils(address, quantity);
+            response = await client.readCoils(address, quantity);
             break;
           case 2:
-            resp = await client.readDiscreteInputs(address, quantity);
+            response = await client.readDiscreteInputs(address, quantity);
             break;
           case 3:
-            resp = await client.readHoldingRegisters(address, quantity);
+            response = await client.readHoldingRegisters(address, quantity);
             break;
           case 4:
-            resp = await client.readInputRegisters(address, quantity);
+            response = await client.readInputRegisters(address, quantity);
             break;
         }
 
-        const responseBody = resp?.response?._body;
-        const values = responseBody?.valuesAsArray ?? responseBody?._valuesAsArray ?? [];
+        const responseBody = response?.response?._body;
+        const values =
+          responseBody?.valuesAsArray ?? responseBody?._valuesAsArray ?? [];
 
         if (func === 1 || func === 2) {
           const bits = valuesToBits(values, quantity);
@@ -170,12 +178,16 @@ export async function POST(req: Request): Promise<Response> {
         }
 
         const numericValues = values.map((value: unknown) => Number(value));
-        const raw = valuesToRaw(numericValues);
+        const validValues = numericValues.every(
+          (value: number) =>
+            Number.isInteger(value) && value >= 0 && value <= 0xffff
+        );
 
-        if (raw.length === 0 && quantity > 0) {
+        if (!validValues || numericValues.length === 0) {
           throw new Error("Cihazdan geçerli register verisi alınamadı.");
         }
 
+        const raw = valuesToRaw(numericValues);
         finish({ success: true, raw, values: numericValues });
       } catch (err: unknown) {
         const error = err as {
@@ -213,7 +225,9 @@ export async function POST(req: Request): Promise<Response> {
         });
 
         const publicError = code
-          ? `Modbus Exception (Code ${code}) - ${exceptionMap[code] || "Unknown Exception"}`
+          ? `Modbus Exception (Code ${code}) - ${
+              exceptionMap[code] || "Unknown Exception"
+            }`
           : "Modbus okuma işlemi başarısız oldu.";
 
         finish({ success: false, error: publicError, code: code ?? 0 });
@@ -261,10 +275,5 @@ export async function POST(req: Request): Promise<Response> {
     });
   }
 
-  return NextResponse.json(result, {
-    headers: {
-      ...rateLimitHeaders(limit),
-      "Cache-Control": "no-store",
-    },
-  });
+  return jsonResponse(result, {}, rateLimitHeaders(limit));
 }

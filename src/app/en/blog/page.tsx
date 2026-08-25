@@ -5,11 +5,11 @@ import { getBlogPosts } from "@/lib/blog-posts";
 export const metadata: Metadata = {
   title: "Blog | VeriSaha Teknoloji",
   description:
-    "Endüstriyel veri izleme, debimetreler, uzaktan otomasyon ve daha fazlası hakkında güncel içerikler.",
+    "Articles on industrial data monitoring, flowmeters, remote automation and related technologies.",
 };
 
-export default function BlogPage() {
-  const posts = getBlogPosts("tr");
+export default function EnglishBlogPage() {
+  const posts = getBlogPosts("en");
 
   return (
     <main className="bg-white">
@@ -17,8 +17,8 @@ export default function BlogPage() {
         <div className="mx-auto max-w-6xl px-4 py-16 text-center md:py-24">
           <h1 className="text-3xl font-bold text-brand-navy md:text-5xl">Blog</h1>
           <p className="mx-auto mt-4 max-w-3xl text-lg text-slate-600">
-            Endüstriyel ölçüm, izleme ve otomasyon dünyasındaki gelişmeleri,
-            ipuçlarını ve teknik yazıları burada bulabilirsiniz.
+            Explore technical articles, practical insights and developments in
+            industrial measurement, monitoring and automation.
           </p>
         </div>
       </section>
@@ -34,10 +34,10 @@ export default function BlogPage() {
             <div className="flex items-center justify-between gap-4">
               <span className="text-xs text-slate-400">{post.readTime}</span>
               <Link
-                href={`/blog/${post.slug}`}
+                href={`/en/blog/${post.slug}`}
                 className="font-semibold text-brand-teal hover:underline"
               >
-                Devamını Oku →
+                Read More →
               </Link>
             </div>
           </article>

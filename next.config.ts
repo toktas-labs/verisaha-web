@@ -1,12 +1,41 @@
-// next.config.ts
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  // Production'da browser source map'lerini yayınlama.
-  productionBrowserSourceMaps: false,
+const securityHeaders = [
+  {
+    key: "Strict-Transport-Security",
+    value: "max-age=31536000",
+  },
+  {
+    key: "X-Content-Type-Options",
+    value: "nosniff",
+  },
+  {
+    key: "X-Frame-Options",
+    value: "SAMEORIGIN",
+  },
+  {
+    key: "Referrer-Policy",
+    value: "strict-origin-when-cross-origin",
+  },
+  {
+    key: "Permissions-Policy",
+    value:
+      "camera=(), microphone=(), geolocation=(), browsing-topics=(), serial=(self)",
+  },
+];
 
-  // Gereksiz framework bilgisini response header'dan kaldır.
+const nextConfig: NextConfig = {
+  productionBrowserSourceMaps: false,
   poweredByHeader: false,
+
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: securityHeaders,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

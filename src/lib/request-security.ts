@@ -1,5 +1,5 @@
-import crypto from "crypto";
-import net from "net";
+import crypto from "node:crypto";
+import net from "node:net";
 
 type RateLimitEntry = {
   count: number;
@@ -18,15 +18,24 @@ type SecurityLogDetails = Record<
   string | number | boolean | null | undefined
 >;
 
+type JsonBodyResult =
+  | { ok: true; body: unknown }
+  | { ok: false; status: 400 | 413 | 415; error: string };
+
 type GlobalWithRateLimit = typeof globalThis & {
   __verisahaRateLimitStore?: Map<string, RateLimitEntry>;
+  __verisahaRateLimitCalls?: number;
 };
+
+const RATE_LIMIT_STORE_MAX = 10_000;
+const RATE_LIMIT_SWEEP_INTERVAL = 100;
 
 const globalForRateLimit = globalThis as GlobalWithRateLimit;
 const rateLimitStore =
   globalForRateLimit.__verisahaRateLimitStore ?? new Map<string, RateLimitEntry>();
 
 globalForRateLimit.__verisahaRateLimitStore = rateLimitStore;
+globalForRateLimit.__verisahaRateLimitCalls ??= 0;
 
 function firstHeaderIp(value: string | null): string | null {
   if (!value) return null;
@@ -90,12 +99,38 @@ export function securityLog(
   console.info("[SECURITY]", JSON.stringify(payload));
 }
 
+function sweepRateLimitStore(now: number): void {
+  for (const [key, entry] of rateLimitStore) {
+    if (entry.resetAt <= now) {
+      rateLimitStore.delete(key);
+    }
+  }
+
+  if (rateLimitStore.size < RATE_LIMIT_STORE_MAX) return;
+
+  const targetSize = Math.floor(RATE_LIMIT_STORE_MAX * 0.9);
+  for (const key of rateLimitStore.keys()) {
+    rateLimitStore.delete(key);
+    if (rateLimitStore.size <= targetSize) break;
+  }
+}
+
 export function rateLimit(
   key: string,
   limit: number,
   windowMs: number
 ): RateLimitResult {
   const now = Date.now();
+  globalForRateLimit.__verisahaRateLimitCalls =
+    (globalForRateLimit.__verisahaRateLimitCalls ?? 0) + 1;
+
+  if (
+    globalForRateLimit.__verisahaRateLimitCalls % RATE_LIMIT_SWEEP_INTERVAL === 0 ||
+    rateLimitStore.size >= RATE_LIMIT_STORE_MAX
+  ) {
+    sweepRateLimitStore(now);
+  }
+
   const existing = rateLimitStore.get(key);
 
   if (!existing || existing.resetAt <= now) {
@@ -113,7 +148,6 @@ export function rateLimit(
   }
 
   existing.count += 1;
-  rateLimitStore.set(key, existing);
 
   return {
     allowed: existing.count <= limit,
@@ -128,6 +162,51 @@ export function rateLimitHeaders(result: RateLimitResult): HeadersInit {
     "X-RateLimit-Limit": String(result.limit),
     "X-RateLimit-Remaining": String(result.remaining),
   };
+}
+
+export async function parseJsonBody(
+  req: Request,
+  maxBytes: number
+): Promise<JsonBodyResult> {
+  const contentType = req.headers.get("content-type");
+  if (contentType && !contentType.toLowerCase().startsWith("application/json")) {
+    return {
+      ok: false,
+      status: 415,
+      error: "Content-Type application/json olmalıdır.",
+    };
+  }
+
+  const contentLength = req.headers.get("content-length");
+  if (contentLength) {
+    const length = Number(contentLength);
+    if (Number.isFinite(length) && length > maxBytes) {
+      return { ok: false, status: 413, error: "İstek boyutu çok büyük." };
+    }
+  }
+
+  let text: string;
+
+  try {
+    text = await req.text();
+  } catch {
+    return { ok: false, status: 400, error: "İstek gövdesi okunamadı." };
+  }
+
+  const actualBytes = new TextEncoder().encode(text).byteLength;
+  if (actualBytes > maxBytes) {
+    return { ok: false, status: 413, error: "İstek boyutu çok büyük." };
+  }
+
+  if (!text.trim()) {
+    return { ok: false, status: 400, error: "Geçersiz veya boş JSON." };
+  }
+
+  try {
+    return { ok: true, body: JSON.parse(text) as unknown };
+  } catch {
+    return { ok: false, status: 400, error: "Geçersiz JSON." };
+  }
 }
 
 function ipv4ToNumber(ip: string): number {
@@ -205,12 +284,11 @@ export function validateModbusTarget(
     };
   }
 
-  // Geliştirme ortamında yerel cihazlarla test yapılabilsin.
-  // Production'da private/reserved hedefleri engelleyerek SSRF riskini azaltıyoruz.
   if (process.env.NODE_ENV === "production" && !isPublicIpv4(ip)) {
     return {
       ok: false,
-      error: "Yerel, özel veya rezerve IP adreslerine sunucu üzerinden bağlantı açılamaz.",
+      error:
+        "Yerel, özel veya rezerve IP adreslerine sunucu üzerinden bağlantı açılamaz.",
     };
   }
 
@@ -226,7 +304,6 @@ export function validateModbusTarget(
 
   return { ok: true, ip, port };
 }
-
 
 export function validateModbusReadRequest(body: unknown):
   | {
@@ -254,7 +331,10 @@ export function validateModbusReadRequest(body: unknown):
 
   const func = Number(input.func);
   if (![1, 2, 3, 4].includes(func)) {
-    return { ok: false, error: "Yalnızca Function Code 01, 02, 03 ve 04 desteklenir." };
+    return {
+      ok: false,
+      error: "Yalnızca Function Code 01, 02, 03 ve 04 desteklenir.",
+    };
   }
 
   const address = Number(input.address);
@@ -288,12 +368,4 @@ export function validateModbusReadRequest(body: unknown):
     address,
     quantity,
   };
-}
-
-export function isRequestBodyTooLarge(req: Request, maxBytes: number): boolean {
-  const contentLength = req.headers.get("content-length");
-  if (!contentLength) return false;
-
-  const length = Number(contentLength);
-  return Number.isFinite(length) && length > maxBytes;
 }

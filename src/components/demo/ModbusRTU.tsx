@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { flushSync } from "react-dom";
 import TrendChart from "./TrendChart";
+import type { Locale } from "@/lib/i18n";
 
 type DataType =
   | "signed"
@@ -34,7 +35,7 @@ interface VeriSahaSerialApi {
 
 declare global {
   interface Navigator {
-    serial: VeriSahaSerialApi;
+    serial?: VeriSahaSerialApi;
   }
 }
 
@@ -48,26 +49,26 @@ interface RegisterRow {
   decimal: number | string;
 }
 
-export default function ModbusRTU() {
+export default function ModbusRTU({ locale = "tr" }: { locale?: Locale }) {
+  const en = locale === "en";
+  const tx = (tr: string, english: string) => (en ? english : tr);
   const [port, setPort] = useState<VeriSahaSerialPort | null>(null);
+  const portRef = useRef<VeriSahaSerialPort | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [registers, setRegisters] = useState<RegisterRow[]>([]);
   const [history, setHistory] = useState<(number | string)[][]>([]);
   const [polling, setPolling] = useState(false);
-  const [pollCount, setPollCount] = useState(0);
   const [step, setStep] = useState<"idle" | "confirmed" | "recording">("idle");
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   const logContainerRef = useRef<HTMLDivElement | null>(null);
   const autoScrollLogRef = useRef(true);
-  const pollCountRef = useRef(0);
   const pollingIntervalRef = useRef<number | null>(null);
-  const countdownRef = useRef<number | null>(null);
   const bufferRef = useRef<Uint8Array>(new Uint8Array());
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastErrorRef = useRef<string | null>(null);
-  const seqRef = useRef(0);
+  const crcErrorLoggedRef = useRef(false);
   const addressRef = useRef(0);
   const pollingRef = useRef(false);
   useEffect(() => { pollingRef.current = polling; }, [polling]);
@@ -80,14 +81,32 @@ export default function ModbusRTU() {
     return () => {
       if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
       if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
-      if (countdownRef.current) clearInterval(countdownRef.current);
       if (firstResponseTimerRef.current) clearTimeout(firstResponseTimerRef.current);
 
       scanIntervalRef.current = null;
       pollingIntervalRef.current = null;
-      countdownRef.current = null;
       firstResponseTimerRef.current = null;
       pollingRef.current = false;
+
+      const activeReader = readerRef.current;
+      const activePort = portRef.current;
+
+      void (async () => {
+        if (activeReader) {
+          try {
+            await activeReader.cancel();
+          } catch {}
+          try {
+            activeReader.releaseLock();
+          } catch {}
+        }
+
+        if (activePort) {
+          try {
+            await activePort.close();
+          } catch {}
+        }
+      })();
     };
   }, []);
 
@@ -134,9 +153,6 @@ export default function ModbusRTU() {
     addressRef.current = address;
   }, [address]);
 
-  useEffect(() => {
-    pollCountRef.current = pollCount;
-  }, [pollCount]);
 
   useEffect(() => {
     const el = logContainerRef.current;
@@ -157,24 +173,64 @@ export default function ModbusRTU() {
   }
 
   /* ---------------- PORT İŞLEMLERİ ---------------- */
+  async function releasePortResources(
+    activePort: VeriSahaSerialPort | null = portRef.current
+  ) {
+    const activeReader = readerRef.current;
+    readerRef.current = null;
+
+    if (activeReader) {
+      try {
+        await activeReader.cancel();
+      } catch {}
+      try {
+        activeReader.releaseLock();
+      } catch {}
+    }
+
+    if (activePort) {
+      try {
+        await activePort.close();
+      } catch {}
+    }
+
+    if (!activePort || portRef.current === activePort) {
+      portRef.current = null;
+    }
+    bufferRef.current = new Uint8Array();
+  }
+
   async function connectPort() {
+    const serial = navigator.serial;
+
+    if (!serial) {
+      const msg = tx(
+        "❌ Web Serial desteklenmiyor. Modbus RTU için masaüstü Chrome veya Edge kullanın.",
+        "❌ Web Serial is not supported. Use desktop Chrome or Edge for Modbus RTU."
+      );
+      setLog((p) => [...p.slice(-99), msg]);
+      alert(msg);
+      return;
+    }
+
     try {
-      const selectedPort = await navigator.serial.requestPort();
+      const selectedPort = await serial.requestPort();
       await selectedPort.open({ baudRate, dataBits, parity, stopBits });
+      portRef.current = selectedPort;
       setPort(selectedPort);
       setLog((p) => [
         ...p,
-        `✅ Modbus RTU bağlantısı kuruldu (${baudRate}, ${dataBits}${parity}, ${stopBits} stop)`,
+        `✅ ${tx("Modbus RTU bağlantısı kuruldu", "Modbus RTU connection established")} (${baudRate}, ${dataBits}${parity}, ${stopBits} stop)`,
       ]);
       startReader(selectedPort);
     } catch (err: unknown) {
       const errorMessage = getErrorMessage(err);
       const msg =
         errorMessage.includes("open")
-          ? "❌ Port zaten kullanımda veya uygun değil."
+          ? tx("❌ Port zaten kullanımda veya uygun değil.", "❌ The port is already in use or unavailable.")
           : errorMessage.includes("NetworkError")
-          ? "❌ Port bağlantısı reddedildi veya kullanımda."
-          : "❌ Port açılamadı: " + errorMessage;
+          ? tx("❌ Port bağlantısı reddedildi veya kullanımda.", "❌ Port access was denied or the port is already in use.")
+          : tx("❌ Port açılamadı: ", "❌ Could not open port: ") + errorMessage;
       setLog((p) => [...p, msg]);
       alert(msg);
     }
@@ -184,25 +240,28 @@ export default function ModbusRTU() {
     try {
       if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
       if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
-      if (countdownRef.current) clearInterval(countdownRef.current);
-      if (readerRef.current) {
-        try {
-          await readerRef.current.cancel();
-        } catch {}
-        try {
-          readerRef.current.releaseLock();
-        } catch {}
-      }
-      await port?.close();
-      setPort(null);
+      if (firstResponseTimerRef.current) clearTimeout(firstResponseTimerRef.current);
 
+      scanIntervalRef.current = null;
+      pollingIntervalRef.current = null;
+      firstResponseTimerRef.current = null;
+
+      await releasePortResources(portRef.current ?? port);
+      setPort(null);
       setRegisters([]);
       setHistory([]);
+      setSelectedIndex(null);
       setStep("idle");
       setPolling(false);
-      setLog((p) => [...p, "🔌 Port kapatıldı"]);
+      pollingRef.current = false;
+      setHasError(false);
+      setLog((p) => [...p.slice(-99), tx("🔌 Port kapatıldı", "🔌 Port closed")]);
     } catch (err: unknown) {
-      setLog((p) => [...p, "⚠️ Port kapatılamadı: " + getErrorMessage(err)]);
+      setLog((p) => [
+        ...p.slice(-99),
+        tx("⚠️ Port kapatılamadı: ", "⚠️ Could not close port: ") +
+          getErrorMessage(err),
+      ]);
     }
   }
 
@@ -221,11 +280,19 @@ export default function ModbusRTU() {
     return [crc & 0xff, (crc >> 8) & 0xff];
   }
 
-  function toHex(data: Uint8Array | number[]): string {
-    return Array.from(data)
-      .map((b) => b.toString(16).toUpperCase().padStart(2, "0"))
-      .join(" ");
+  function hasValidCRC(frame: Uint8Array): boolean {
+    if (frame.length < 4) return false;
+
+    const payload = Array.from(frame.slice(0, -2));
+    const [crcLo, crcHi] = calcCRC(payload);
+
+    return (
+      frame[frame.length - 2] === crcLo &&
+      frame[frame.length - 1] === crcHi
+    );
   }
+
+
 
   async function startReader(selectedPort: VeriSahaSerialPort) {
     const reader = selectedPort.readable?.getReader();
@@ -234,30 +301,25 @@ export default function ModbusRTU() {
 
     try {
       while (selectedPort.readable) {
-        const { value, done } = await reader.read().catch(
-          (): ReadableStreamReadResult<Uint8Array> => ({
-            done: true,
-            value: new Uint8Array(0),
-          })
-        );
+        const { value, done } = await reader.read();
         if (done || !value) break;
 
-        if (process.env.NODE_ENV !== "production") console.debug("MODBUS RX:", toHex(value));
+        const currentBuffer = bufferRef.current;
+        const newBuffer = new Uint8Array(currentBuffer.length + value.length);
+        newBuffer.set(currentBuffer);
+        newBuffer.set(value, currentBuffer.length);
+        bufferRef.current =
+          newBuffer.length > 4096 ? newBuffer.slice(-4096) : newBuffer;
 
-        const newBuffer = new Uint8Array(bufferRef.current.length + value.length);
-        newBuffer.set(bufferRef.current);
-        newBuffer.set(value, bufferRef.current.length);
-	bufferRef.current = newBuffer;
-
-	processBuffer();   // ← sadece bu
+        processBuffer();
       }
     } catch (err: unknown) {
-      const message = getErrorMessage(err) || "Cihaz yanıt vermiyor";
+      const message = getErrorMessage(err) || tx("Cihaz yanıt vermiyor", "Device is not responding");
 
       if (lastAutoReadErrorRef.current !== message) {
         setLog((p) => [
           ...p.slice(-99),
-          "⛔ Bağlantı koptu: Cihazdan veri alınamadı. Kabloyu kontrol edin."
+          tx("⛔ Bağlantı koptu: Cihazdan veri alınamadı. Kabloyu kontrol edin.", "⛔ Connection lost: No data received from the device. Check the cable and serial connection.")
         ]);
         lastAutoReadErrorRef.current = message;
       }
@@ -270,7 +332,8 @@ export default function ModbusRTU() {
 	setHasError(true);
       });
 
-      try { await port?.close(); } catch {}
+      await releasePortResources(selectedPort);
+      setPort(null);
 
     } finally {
       try { reader.releaseLock(); } catch {}
@@ -279,76 +342,112 @@ export default function ModbusRTU() {
   }
 
   function processBuffer() {
-    const buf = bufferRef.current;
-    if (!buf || buf.length < 3) return;
-    if (buf[0] !== slaveIdRef.current) return;
+    while (bufferRef.current.length >= 5) {
+      let buf = bufferRef.current;
+      const slaveIndex = buf.indexOf(slaveIdRef.current);
 
-    const funcCode = buf[1];
+      if (slaveIndex < 0) {
+        bufferRef.current = new Uint8Array();
+        return;
+      }
 
-  if (funcCode & 0x80) {
-    if (buf.length < 5) return;
+      if (slaveIndex > 0) {
+        bufferRef.current = buf.slice(slaveIndex);
+        buf = bufferRef.current;
+      }
 
-    const errorCode = buf[2];
+      if (buf.length < 5) return;
 
-    const errorMap: Record<number, string> = {
-      1: "Illegal Function",
-      2: "Illegal Data Address",
-      3: "Illegal Data Value",
-      4: "Slave Device Failure",
-    };
+      const funcCode = buf[1];
+      const expectedFunc = funcRef.current;
+      const isException = funcCode === (expectedFunc | 0x80);
 
-    const desc = `Modbus Exception (Code ${errorCode})${
-      errorMap[errorCode] ? ` - ${errorMap[errorCode]}` : ""
-    }`;
+      if (funcCode !== expectedFunc && !isException) {
+        bufferRef.current = buf.slice(1);
+        continue;
+      }
 
-    if (firstResponseTimerRef.current) {
-      clearTimeout(firstResponseTimerRef.current);
-      firstResponseTimerRef.current = null;
+      const expectedLength = isException ? 5 : 3 + buf[2] + 2;
+
+      if (!isException) {
+        const expectedByteCount =
+          expectedFunc === 1 || expectedFunc === 2
+            ? Math.ceil(quantityRef.current / 8)
+            : quantityRef.current * 2;
+
+        if (buf[2] !== expectedByteCount) {
+          bufferRef.current = buf.slice(1);
+          continue;
+        }
+      }
+
+      if (buf.length < expectedLength) return;
+
+      const fullPacket = buf.slice(0, expectedLength);
+
+      if (!hasValidCRC(fullPacket)) {
+        if (!crcErrorLoggedRef.current) {
+          setLog((p) => [
+            ...p.slice(-99),
+            tx(
+              "⚠️ Geçersiz CRC'li Modbus cevabı yok sayıldı.",
+              "⚠️ A Modbus response with an invalid CRC was ignored."
+            ),
+          ]);
+          crcErrorLoggedRef.current = true;
+        }
+
+        bufferRef.current = buf.slice(1);
+        continue;
+      }
+
+      crcErrorLoggedRef.current = false;
+      bufferRef.current = buf.slice(expectedLength);
+
+      if (firstResponseTimerRef.current) {
+        clearTimeout(firstResponseTimerRef.current);
+        firstResponseTimerRef.current = null;
+      }
+
+      if (isException) {
+        const errorCode = fullPacket[2];
+        const errorMap: Record<number, string> = {
+          1: "Illegal Function",
+          2: "Illegal Data Address",
+          3: "Illegal Data Value",
+          4: "Slave Device Failure",
+        };
+
+        const desc = `Modbus Exception (Code ${errorCode})${
+          errorMap[errorCode] ? ` - ${errorMap[errorCode]}` : ""
+        }`;
+
+        if (lastErrorRef.current !== desc) {
+          setLog((p) => [...p.slice(-99), `❌ ${desc}`]);
+          lastErrorRef.current = desc;
+        }
+
+        setHasError(true);
+        setPolling(false);
+        pollingRef.current = false;
+        setStep("idle");
+
+        if (scanIntervalRef.current) {
+          clearInterval(scanIntervalRef.current);
+          scanIntervalRef.current = null;
+        }
+
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+
+        return;
+      }
+
+      handleResponse(fullPacket);
     }
-
-    if (lastErrorRef.current !== desc) {
-      setLog((p) => [...p.slice(-99), `❌ ${desc}`]);
-      lastErrorRef.current = desc;
-    }
-
-    setHasError(true);
-    setPolling(false);
-    pollingRef.current = false;
-    setStep("idle");
-
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
-
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
-    }
-
-    console.log("MODBUS EXCEPTION:", desc);
-
-    bufferRef.current = buf.slice(5);
-    processBuffer();
-    return;
   }
-
-  // Normal frame
-  const byteCount = buf[2];
-  const expectedLength = 3 + byteCount + 2;
-
-  // frame henüz tamamlanmadıysa hiçbir şey yapma
-  if (buf.length < expectedLength) return;
-
-  // tam frame
-  const fullPacket = buf.slice(0, expectedLength);
-  bufferRef.current = buf.slice(expectedLength);
-
-  handleResponse(fullPacket);
-
-  // kalan data varsa tekrar işle
-  processBuffer();
-}
 
   /* ---------------- VERİ AYRIŞTIRMA ---------------- */
   function handleResponse(value: Uint8Array) {
@@ -356,7 +455,7 @@ export default function ModbusRTU() {
     if (wasDisconnectedRef.current) {
       setLog((p) => [
         ...p.slice(-99),
-        "🔄 Bağlantı yeniden sağlandı."
+        tx("🔄 Bağlantı yeniden sağlandı.", "🔄 Connection restored.")
       ]);
 
       wasDisconnectedRef.current = false;
@@ -510,7 +609,7 @@ export default function ModbusRTU() {
 
   /* ---------------- FRAME GÖNDERME ---------------- */
   async function sendFrame() {
-    if (!port) throw new Error("Port bağlı değil");
+    if (!port) throw new Error(tx("Port bağlı değil", "Port is not connected"));
 
     bufferRef.current = new Uint8Array();
     const frame = [
@@ -523,8 +622,6 @@ export default function ModbusRTU() {
     ];
     const [crcLo, crcHi] = calcCRC(frame);
     const request = new Uint8Array([...frame, crcLo, crcHi]);
-
-    if (process.env.NODE_ENV !== "production") console.debug("MODBUS TX:", toHex(request));
 
     let writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
 
@@ -543,7 +640,7 @@ export default function ModbusRTU() {
       if (lastAutoReadErrorRef.current !== message) {
         setLog((p) => [
           ...p.slice(-99),
-          "⛔ Bağlantı koptu: Cihazdan veri alınamadı. Kabloyu kontrol edin."
+          tx("⛔ Bağlantı koptu: Cihazdan veri alınamadı. Kabloyu kontrol edin.", "⛔ Connection lost: No data received from the device. Check the cable and serial connection.")
         ]);
         lastAutoReadErrorRef.current = message;
       }
@@ -556,7 +653,13 @@ export default function ModbusRTU() {
         setHasError(true);
       });
 
-      try { await port?.close(); } catch {}
+      try {
+        writer?.releaseLock();
+      } catch {}
+      writer = null;
+
+      await releasePortResources(portRef.current ?? port);
+      setPort(null);
 
     } finally {
       try { writer?.releaseLock(); } catch {}
@@ -565,11 +668,52 @@ export default function ModbusRTU() {
 
   /* ---------------- OKUMAYI BAŞLAT / KAYIT / DURDUR ---------------- */
 
+  function validateReadSettings(): string | null {
+    if (!Number.isInteger(slaveId) || slaveId < 1 || slaveId > 247) {
+      return tx(
+        "Slave ID 1-247 arasında olmalıdır.",
+        "Slave ID must be between 1 and 247."
+      );
+    }
+
+    if (!Number.isInteger(address) || address < 0 || address > 65535) {
+      return tx(
+        "Adres 0-65535 arasında tam sayı olmalıdır.",
+        "Address must be an integer between 0 and 65535."
+      );
+    }
+
+    const maxQuantity = isBitFunction ? 2000 : 125;
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > maxQuantity) {
+      return tx(
+        `Miktar bu fonksiyon için 1-${maxQuantity} arasında olmalıdır.`,
+        `Quantity must be between 1 and ${maxQuantity} for this function.`
+      );
+    }
+
+    if (address + quantity - 1 > 65535) {
+      return tx(
+        "Adres + miktar Modbus adres alanını aşıyor.",
+        "Address + quantity exceeds the Modbus address range."
+      );
+    }
+
+    return null;
+  }
+
   function startReading() {
     try {
+      const validationError = validateReadSettings();
+      if (validationError) {
+        setLog((p) => [...p.slice(-99), `❌ ${validationError}`]);
+        setHasError(true);
+        setStep("idle");
+        return;
+      }
+
       setRegisters([]);
       setHistory([]);
-      seqRef.current = 0;
+      setSelectedIndex(null);
       setPolling(false);
       pollingRef.current = false;
       setHasError(false);
@@ -586,10 +730,16 @@ export default function ModbusRTU() {
         longInverse: "LONG (32-bit INT)",
       };
 
+      const safeScanRate = Math.max(scanRate, 200);
+
       if (scanRate < 200) {
+        setScanRate(200);
         setLog((p) => [
           ...p.slice(-99),
-          "⚠️ Çok düşük scan rate kullanıyorsunuz (<200 ms). Gerçek Modbus cihazlarında timeout ve kopma sorunlarına yol açabilir."
+          tx(
+            "⚠️ Kararlı RTU haberleşmesi için minimum scan rate 200 ms olarak uygulanır.",
+            "⚠️ The minimum scan rate is limited to 200 ms for stable RTU communication."
+          ),
         ]);
       }
 
@@ -599,14 +749,14 @@ export default function ModbusRTU() {
           isBitFunction
             ? "BIT (0/1)"
             : typeLabelMap[dataType] || dataType.toUpperCase()
-        }, Scan:${scanRate}ms)`,
+        }, Scan:${safeScanRate}ms)`,
       ]);
 
       lastErrorRef.current = null;
       lastAutoReadErrorRef.current = null;
 
       sendFrame().catch((err: unknown) =>
-        setLog((p) => [...p.slice(-99), "❌ İlk okuma hatası: " + getErrorMessage(err)])
+        setLog((p) => [...p.slice(-99), tx("❌ İlk okuma hatası: ", "❌ Initial read error: ") + getErrorMessage(err)])
       );
 
       if (firstResponseTimerRef.current) clearTimeout(firstResponseTimerRef.current);
@@ -620,21 +770,21 @@ export default function ModbusRTU() {
         }
         setLog((p) => [
           ...p.slice(-99),
-          "⛔ Timeout: Cihazdan cevap alınamadı. Bağlantı ayarlarını kontrol edin."
+          tx("⛔ Timeout: Cihazdan cevap alınamadı. Bağlantı ayarlarını kontrol edin.", "⛔ Timeout: No response received from the device. Check the connection settings.")
         ]);
       }, 2000);
 
       if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
       scanIntervalRef.current = setInterval(() => {
         sendFrame().catch((err: unknown) =>
-          setLog((p) => [...p.slice(-99), "⚠️ Otomatik okuma hatası: " + getErrorMessage(err)])
+          setLog((p) => [...p.slice(-99), tx("⚠️ Otomatik okuma hatası: ", "⚠️ Automatic read error: ") + getErrorMessage(err)])
         );
-      }, scanRate);
+      }, safeScanRate);
 
       setStep("confirmed");
     } catch (err: unknown) {
       setStep("idle");
-      setLog((p) => [...p.slice(-99), "❌ Okuma başlatma hatası: " + getErrorMessage(err)]);
+      setLog((p) => [...p.slice(-99), tx("❌ Okuma başlatma hatası: ", "❌ Failed to start reading: ") + getErrorMessage(err)]);
     }
   }
 
@@ -651,18 +801,14 @@ export default function ModbusRTU() {
 
     setPolling(true);
     pollingRef.current = true;
-    setPollCount(0);
-    seqRef.current = 0;
     setHistory([]);
-    setLog((p) => [...p.slice(-99), "▶️ Kayıt başladı"]);
+    setLog((p) => [...p.slice(-99), tx("▶️ Kayıt başladı", "▶️ Recording started")]);
 
     pollingIntervalRef.current = window.setInterval(async () => {
       try {
-        seqRef.current += 1;
-        setPollCount(seqRef.current);
         await sendFrame();
       } catch (err: unknown) {
-        setLog((p) => [...p.slice(-99), "⚠️ Sorgu hatası: " + getErrorMessage(err)]);
+        setLog((p) => [...p.slice(-99), tx("⚠️ Sorgu hatası: ", "⚠️ Query error: ") + getErrorMessage(err)]);
       }
     }, scanRate);
 
@@ -679,11 +825,10 @@ export default function ModbusRTU() {
     pollingRef.current = false;
     setLog((p) => [
       ...p.slice(-99),
-      "⏹ Kayıt durduruldu; canlı okuma devam ediyor."
+      tx("⏹ Kayıt durduruldu; canlı okuma devam ediyor.", "⏹ Recording stopped; live reading continues.")
     ]);
 
     setStep("confirmed");
-    seqRef.current = 0;
 
     if (scanIntervalRef.current) {
       clearInterval(scanIntervalRef.current);
@@ -692,7 +837,7 @@ export default function ModbusRTU() {
 
     scanIntervalRef.current = setInterval(() => {
       sendFrame().catch((err: unknown) =>
-        setLog((p) => [...p.slice(-99), "⚠️ Otomatik okuma hatası (yeniden): " + getErrorMessage(err)])
+        setLog((p) => [...p.slice(-99), tx("⚠️ Otomatik okuma hatası (yeniden): ", "⚠️ Automatic read error (retry): ") + getErrorMessage(err)])
       );
     }, scanRate);
   }
@@ -716,13 +861,15 @@ export default function ModbusRTU() {
     setPolling(false);
     pollingRef.current = false;
     setStep("idle");
-    seqRef.current = 0;
 
     setLog((p) => [
       ...p.slice(-99),
-      "⏹ Canlı okuma durduruldu."
+      tx("⏹ Canlı okuma durduruldu.", "⏹ Live reading stopped.")
     ]);
   }
+
+  const selectedRegister =
+    selectedIndex !== null ? registers[selectedIndex] : undefined;
 
   /* ---------------- UI ---------------- */
   return (
@@ -731,7 +878,7 @@ export default function ModbusRTU() {
 
       {!port ? (
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Connection Settings</h3>
+          <h3 className="text-lg font-semibold">{en ? "Connection Settings" : "Bağlantı Ayarları"}</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <label>Baud Rate</label>
@@ -748,7 +895,7 @@ export default function ModbusRTU() {
               </select>
             </div>
             <div>
-              <label>Data Bits</label>
+              <label>{en ? "Data Bits" : "Veri Bitleri"}</label>
               <select
                 value={dataBits}
                 onChange={(e) => setDataBits(Number(e.target.value))}
@@ -762,7 +909,7 @@ export default function ModbusRTU() {
               </select>
             </div>
             <div>
-              <label>Parity</label>
+              <label>{en ? "Parity" : "Parite"}</label>
               <select
                 value={parity}
                 onChange={(e) => setParity(e.target.value as SerialParity)}
@@ -774,7 +921,7 @@ export default function ModbusRTU() {
               </select>
             </div>
             <div>
-              <label>Stop Bits</label>
+              <label>{en ? "Stop Bits" : "Stop Bitleri"}</label>
               <select
                 value={stopBits}
                 onChange={(e) => setStopBits(Number(e.target.value))}
@@ -793,7 +940,7 @@ export default function ModbusRTU() {
             onClick={connectPort}
             className="px-3 py-2 rounded bg-brand-navy text-white hover:bg-brand-navy/90"
           >
-            Porta Bağlan
+            {en ? "Connect to Port" : "Porta Bağlan"}
           </button>
         </div>
       ) : (
@@ -801,13 +948,13 @@ export default function ModbusRTU() {
           {/* Port açıkken kapatma butonu */}
           <button
             onClick={closePort}
-            title="Portu kapat"
+            title={en ? "Close port" : "Portu kapat"}
             className="absolute top-0 right-0 m-2 px-2 py-1 text-sm text-gray-500 hover:text-red-600 border rounded hover:bg-red-50"
           >
             ✕
           </button>
 
-          <h3 className="text-lg font-semibold">Read/Write Definition</h3>
+          <h3 className="text-lg font-semibold">{en ? "Read Definition" : "Okuma Tanımı"}</h3>
           <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
             <div>
               <label>Slave ID</label>
@@ -821,7 +968,7 @@ export default function ModbusRTU() {
             </div>
 
             <div>
-              <label>Function</label>
+              <label>{en ? "Function" : "Fonksiyon"}</label>
               <select
                 value={func}
                 onChange={(e) => setFunc(Number(e.target.value))}
@@ -836,7 +983,7 @@ export default function ModbusRTU() {
             </div>
 
             <div>
-              <label>Address</label>
+              <label>{en ? "Address" : "Adres"}</label>
               <input
                 type="number"
                 value={address}
@@ -847,7 +994,7 @@ export default function ModbusRTU() {
             </div>
 
             <div>
-              <label>Quantity</label>
+              <label>{en ? "Quantity" : "Miktar"}</label>
               <input
                 type="number"
                 value={quantity}
@@ -858,7 +1005,7 @@ export default function ModbusRTU() {
             </div>
 
             <div>
-              <label>Data Type</label>
+              <label>{en ? "Data Type" : "Veri Tipi"}</label>
               <select
                 value={dataType}
                 onChange={(e) => setDataType(e.target.value as DataType)}
@@ -908,28 +1055,28 @@ export default function ModbusRTU() {
                 onClick={startReading}
                 className="px-3 py-2 rounded text-white transition bg-green-600 hover:bg-green-700"
               >
-                Okumayı Başlat
+                {en ? "Start Reading" : "Okumayı Başlat"}
               </button>
             )}
 
             {step === "confirmed" && !hasError && (
               <>
                 <span className="px-3 py-2 rounded bg-green-50 text-green-700 border border-green-200 text-sm font-medium">
-                  🟢 Canlı Okuma Aktif
+                  🟢 {en ? "Live Reading Active" : "Canlı Okuma Aktif"}
                 </span>
 
                 <button
                   onClick={startPolling}
                   className="px-3 py-2 rounded text-white bg-purple-600 hover:bg-purple-700"
                 >
-                  Kayıt Başlat
+                  {en ? "Start Recording" : "Kayıt Başlat"}
                 </button>
 
                 <button
                   onClick={stopReading}
                   className="px-3 py-2 rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-100"
                 >
-                  Okumayı Durdur
+                  {en ? "Stop Reading" : "Okumayı Durdur"}
                 </button>
               </>
             )}
@@ -937,14 +1084,14 @@ export default function ModbusRTU() {
             {step === "recording" && (
               <>
                 <span className="px-3 py-2 rounded bg-red-50 text-red-700 border border-red-200 text-sm font-medium">
-                  🔴 Kayıt Yapılıyor
+                  🔴 {en ? "Recording" : "Kayıt Yapılıyor"}
                 </span>
 
                 <button
                   onClick={stopPolling}
                   className="px-3 py-2 rounded bg-red-600 text-white hover:bg-red-700"
                 >
-                  Kaydı Durdur
+                  {en ? "Stop Recording" : "Kaydı Durdur"}
                 </button>
               </>
             )}
@@ -956,7 +1103,7 @@ export default function ModbusRTU() {
               onClick={() => setLog([])}
               className="absolute top-2 right-5 px-2 py-1 text-xs bg-white text-gray-600 border border-gray-300 rounded hover:bg-gray-100"
             >
-              Temizle
+              {en ? "Clear" : "Temizle"}
             </button>
             <div
               ref={logContainerRef}
@@ -1017,7 +1164,7 @@ export default function ModbusRTU() {
               </th>
               {Array.from({ length: 11 }).map((_, i) => (
                 <th key={i} className="border px-2 py-1 whitespace-nowrap">
-                  {i === 0 ? "Başlangıç" : `Sorgu ${i}`}
+                  {i === 0 ? (en ? "Start" : "Başlangıç") : `${en ? "Query" : "Sorgu"} ${i}`}
                 </th>
               ))}
             </tr>
@@ -1061,14 +1208,14 @@ export default function ModbusRTU() {
 	{/* Trend Alanı */}
        <div className="mt-6 space-y-6">
  	 {/* Eğer hiçbir satır seçilmediyse: tüm register'ların trendini göster */}
- 	 {selectedIndex === null ? (
+ 	 {!selectedRegister ? (
   	  <div>
         <h3 className="text-lg font-semibold text-brand-navy mb-2">
           📊 {func === 1
-            ? "Tüm Coil Trendleri"
+            ? (en ? "All Coil Trends" : "Tüm Coil Trendleri")
             : func === 2
-            ? "Tüm Discrete Input Trendleri"
-            : "Tüm Register Trendleri"}
+            ? (en ? "All Discrete Input Trends" : "Tüm Discrete Input Trendleri")
+            : (en ? "All Register Trends" : "Tüm Register Trendleri")}
         </h3>
    	   <div className="grid md:grid-cols-2 gap-6">
   	      {registers.map((r, idx) =>
@@ -1079,6 +1226,7 @@ export default function ModbusRTU() {
         	   data={history[idx]}
          	   polling={polling}
          	   scanRate={scanRate}
+         	   locale={locale}
         	  />
       	      ) : null
    	     )}
@@ -1090,24 +1238,25 @@ export default function ModbusRTU() {
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-lg font-semibold text-brand-navy">
           {func === 1
-            ? `Coil ${registers[selectedIndex].index} Trend`
+            ? `Coil ${selectedRegister.index} Trend`
             : func === 2
-            ? `Discrete Input ${registers[selectedIndex].index} Trend`
-            : `Register ${registers[selectedIndex].index} Trend`}
+            ? `Discrete Input ${selectedRegister.index} Trend`
+            : `Register ${selectedRegister.index} Trend`}
         </h3>
         <button
           onClick={() => setSelectedIndex(null)}
           className="text-sm text-blue-600 hover:underline"
         >
-          ← Hepsini Göster
+          ← {en ? "Show All" : "Hepsini Göster"}
         </button>
       </div>
 
       <TrendChart
-       label={registers[selectedIndex].index}
-       data={history[selectedIndex]}
+       label={selectedRegister.index}
+       data={history[selectedIndex ?? 0]}
        polling={polling}
        scanRate={scanRate} // 🔹 buradan doğru aktarılıyor
+       locale={locale}
       />
     </div>
   )}

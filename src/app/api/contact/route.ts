@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import {
   getClientIp,
-  isRequestBodyTooLarge,
+  parseJsonBody,
   rateLimit,
   rateLimitHeaders,
   securityLog,
@@ -13,6 +13,23 @@ import {
 const CONTACT_RATE_LIMIT = 5;
 const CONTACT_RATE_WINDOW_MS = 60 * 60 * 1000;
 const MAX_BODY_BYTES = 16_384;
+
+function jsonResponse(
+  body: unknown,
+  init: ResponseInit = {},
+  extraHeaders: HeadersInit = {}
+): Response {
+  const headers = new Headers(init.headers);
+  headers.set("Cache-Control", "no-store");
+
+  const additions = new Headers(extraHeaders);
+  additions.forEach((value, key) => headers.set(key, value));
+
+  return NextResponse.json(body, {
+    ...init,
+    headers,
+  });
+}
 
 function cleanText(value: unknown, maxLength: number): string {
   if (typeof value !== "string") return "";
@@ -36,7 +53,7 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#039;");
 }
 
-export async function POST(req: Request) {
+export async function POST(req: Request): Promise<Response> {
   const clientIp = getClientIp(req);
   const limit = rateLimit(
     `contact:${clientIp}`,
@@ -47,75 +64,91 @@ export async function POST(req: Request) {
   if (!limit.allowed) {
     securityLog(req, "contact_rate_limited");
 
-    return NextResponse.json(
+    return jsonResponse(
       {
         success: false,
-        error: "Çok fazla mesaj gönderme denemesi yapıldı. Lütfen daha sonra tekrar deneyin.",
+        error:
+          "Çok fazla mesaj gönderme denemesi yapıldı. Lütfen daha sonra tekrar deneyin.",
       },
+      { status: 429 },
       {
-        status: 429,
-        headers: {
-          ...rateLimitHeaders(limit),
-          "Retry-After": String(limit.retryAfterSeconds),
-        },
+        ...rateLimitHeaders(limit),
+        "Retry-After": String(limit.retryAfterSeconds),
       }
     );
   }
 
-  if (isRequestBodyTooLarge(req, MAX_BODY_BYTES)) {
-    securityLog(req, "contact_body_too_large");
+  const parsed = await parseJsonBody(req, MAX_BODY_BYTES);
+  if (!parsed.ok) {
+    securityLog(req, "contact_invalid_request", {
+      status: parsed.status,
+      reason: parsed.error,
+    });
 
-    return NextResponse.json(
-      { success: false, error: "İstek boyutu çok büyük." },
-      { status: 413 }
+    return jsonResponse(
+      { success: false, error: parsed.error },
+      { status: parsed.status },
+      rateLimitHeaders(limit)
+    );
+  }
+
+  if (!parsed.body || typeof parsed.body !== "object" || Array.isArray(parsed.body)) {
+    return jsonResponse(
+      { success: false, error: "Geçersiz istek." },
+      { status: 400 },
+      rateLimitHeaders(limit)
+    );
+  }
+
+  const input = parsed.body as Record<string, unknown>;
+  const honeypot = cleanText(input.website, 200);
+
+  if (honeypot) {
+    securityLog(req, "contact_honeypot_triggered");
+    return jsonResponse({ success: true }, {}, rateLimitHeaders(limit));
+  }
+
+  const name = cleanText(input.name, 100);
+  const email = cleanText(input.email, 254).toLowerCase();
+  const phone = cleanText(input.phone, 50);
+  const company = cleanText(input.company, 120);
+  const subject = cleanSubject(input.subject);
+  const message = cleanText(input.message, 5000);
+
+  if (!name || !email || !message) {
+    return jsonResponse(
+      { success: false, error: "Ad, e-posta ve mesaj alanları zorunludur." },
+      { status: 400 },
+      rateLimitHeaders(limit)
+    );
+  }
+
+  if (!isValidEmail(email)) {
+    return jsonResponse(
+      { success: false, error: "Geçerli bir e-posta adresi girin." },
+      { status: 400 },
+      rateLimitHeaders(limit)
+    );
+  }
+
+  const mailHost = process.env.MAIL_HOST;
+  const mailUser = process.env.MAIL_USER;
+  const mailPass = process.env.MAIL_PASS;
+  const mailPort = Number(process.env.MAIL_PORT) || 465;
+
+  if (!mailHost || !mailUser || !mailPass) {
+    console.error("Mail yapılandırması eksik.");
+    return jsonResponse(
+      {
+        success: false,
+        error: "Mesaj şu anda gönderilemiyor. Lütfen daha sonra tekrar deneyin.",
+      },
+      { status: 503 },
+      rateLimitHeaders(limit)
     );
   }
 
   try {
-    const body = await req.json();
-
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
-      return NextResponse.json(
-        { success: false, error: "Geçersiz istek." },
-        { status: 400 }
-      );
-    }
-
-    const input = body as Record<string, unknown>;
-    const name = cleanText(input.name, 100);
-    const email = cleanText(input.email, 254).toLowerCase();
-    const phone = cleanText(input.phone, 50);
-    const company = cleanText(input.company, 120);
-    const subject = cleanSubject(input.subject);
-    const message = cleanText(input.message, 5000);
-
-    if (!name || !email || !message) {
-      return NextResponse.json(
-        { success: false, error: "Ad, e-posta ve mesaj alanları zorunludur." },
-        { status: 400 }
-      );
-    }
-
-    if (!isValidEmail(email)) {
-      return NextResponse.json(
-        { success: false, error: "Geçerli bir e-posta adresi girin." },
-        { status: 400 }
-      );
-    }
-
-    const mailHost = process.env.MAIL_HOST;
-    const mailUser = process.env.MAIL_USER;
-    const mailPass = process.env.MAIL_PASS;
-    const mailPort = Number(process.env.MAIL_PORT) || 465;
-
-    if (!mailHost || !mailUser || !mailPass) {
-      console.error("Mail yapılandırması eksik.");
-      return NextResponse.json(
-        { success: false, error: "Mesaj şu anda gönderilemiyor. Lütfen daha sonra tekrar deneyin." },
-        { status: 503 }
-      );
-    }
-
     const transporter = nodemailer.createTransport({
       host: mailHost,
       port: mailPort,
@@ -124,6 +157,8 @@ export async function POST(req: Request) {
         user: mailUser,
         pass: mailPass,
       },
+      disableFileAccess: true,
+      disableUrlAccess: true,
     });
 
     const safeName = escapeHtml(name);
@@ -163,27 +198,20 @@ export async function POST(req: Request) {
       hasCompany: Boolean(company),
     });
 
-    return NextResponse.json(
-      { success: true },
-      {
-        headers: {
-          ...rateLimitHeaders(limit),
-          "Cache-Control": "no-store",
-        },
-      }
-    );
+    return jsonResponse({ success: true }, {}, rateLimitHeaders(limit));
   } catch (err: unknown) {
     const internalError = err instanceof Error ? err.message : "Unknown error";
 
     console.error("Mail gönderme hatası:", internalError);
     securityLog(req, "contact_send_failed");
 
-    return NextResponse.json(
+    return jsonResponse(
       {
         success: false,
         error: "Mesaj gönderilemedi. Lütfen daha sonra tekrar deneyin.",
       },
-      { status: 500 }
+      { status: 500 },
+      rateLimitHeaders(limit)
     );
   }
 }

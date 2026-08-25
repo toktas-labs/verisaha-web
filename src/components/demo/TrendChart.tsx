@@ -1,4 +1,5 @@
 "use client";
+
 import {
   LineChart,
   Line,
@@ -9,12 +10,14 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
+import type { Locale } from "@/lib/i18n";
 
 interface TrendChartProps {
   label: number | string;
   data: (number | string)[];
   polling?: boolean;
   scanRate?: number;
+  locale?: Locale;
 }
 
 export default function TrendChart({
@@ -22,7 +25,9 @@ export default function TrendChart({
   data,
   polling,
   scanRate = 1000,
+  locale = "tr",
 }: TrendChartProps) {
+  const en = locale === "en";
   const stepSeconds = scanRate / 1000;
 
   const chartData =
@@ -37,7 +42,6 @@ export default function TrendChart({
     (d) => typeof d.value === "number" && !isNaN(d.value)
   );
 
-  // 🎨 Renk paleti
   const colors = [
     "#1B3B5F", "#2563EB", "#3B82F6", "#60A5FA",
     "#2FA89B", "#10B981", "#34D399", "#6EE7B7",
@@ -50,7 +54,7 @@ export default function TrendChart({
   if (!validData.length) {
     return (
       <div className="text-center text-gray-500 text-sm mt-4">
-        📊 Geçerli veri bulunamadı.
+        📊 {en ? "No valid data available." : "Geçerli veri bulunamadı."}
       </div>
     );
   }
@@ -72,14 +76,14 @@ export default function TrendChart({
               dataKey="zaman"
               type="number"
               domain={[0, "dataMax"]}
-              ticks={validData.map((d) => d.zaman)}   // 🔹 tam 0,3,6,9... değerleri
-              tickFormatter={(t) => `${t}`}          // etikete saniye ekle
+              ticks={validData.map((d) => d.zaman)}
+              tickFormatter={(t) => `${t}`}
               allowDecimals={false}
               label={{
-                value: "Zaman (s)",
+                value: en ? "Time (s)" : "Zaman (s)",
                 position: "insideBottomRight",
                 offset: -5,
-                dy: 5, // 🔹 yazıyı biraz aşağı taşır
+                dy: 5,
                 style: { fontSize: 12, fill: "#374151" },
               }}
             />
@@ -90,7 +94,7 @@ export default function TrendChart({
               tick={({ x, y, payload }) => {
                 const value = payload.value;
                 const isBig = Math.abs(value) >= 1_000_000;
-                const fontSize = isBig ? 10 : 12; // 🔹 büyük sayılar için daha küçük yazı
+                const fontSize = isBig ? 10 : 12;
                 return (
                   <text
                     x={x}
@@ -100,7 +104,7 @@ export default function TrendChart({
                     fontSize={fontSize}
                     fontFamily="monospace"
                   >
-                    {value.toFixed(0)} {/* 🔹 binlik ayırıcı kaldırıldı */}
+                    {value.toFixed(0)}
                   </text>
                 );
               }}
@@ -113,7 +117,7 @@ export default function TrendChart({
             <Line
               type="monotone"
               dataKey="value"
-              name="Değer"
+              name={en ? "Value" : "Değer"}
               stroke={color}
               strokeWidth={2}
               dot={{ r: 3 }}

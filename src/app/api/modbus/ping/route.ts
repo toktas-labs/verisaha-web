@@ -1,11 +1,11 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import net from "net";
+import net from "node:net";
 import {
   getClientIp,
-  isRequestBodyTooLarge,
   maskIp,
+  parseJsonBody,
   rateLimit,
   rateLimitHeaders,
   securityLog,
@@ -16,6 +16,23 @@ const PING_RATE_LIMIT = 20;
 const PING_RATE_WINDOW_MS = 60_000;
 const MAX_BODY_BYTES = 2_048;
 const SOCKET_TIMEOUT_MS = 3_000;
+
+function jsonResponse(
+  body: unknown,
+  init: ResponseInit = {},
+  extraHeaders: HeadersInit = {}
+): Response {
+  const headers = new Headers(init.headers);
+  headers.set("Cache-Control", "no-store");
+
+  const additions = new Headers(extraHeaders);
+  additions.forEach((value, key) => headers.set(key, value));
+
+  return NextResponse.json(body, {
+    ...init,
+    headers,
+  });
+}
 
 export async function POST(req: Request): Promise<Response> {
   const clientIp = getClientIp(req);
@@ -28,65 +45,61 @@ export async function POST(req: Request): Promise<Response> {
   if (!limit.allowed) {
     securityLog(req, "modbus_ping_rate_limited");
 
-    return NextResponse.json(
+    return jsonResponse(
       {
         success: false,
-        error: "Çok fazla bağlantı denemesi yapıldı. Lütfen kısa süre sonra tekrar deneyin.",
+        error:
+          "Çok fazla bağlantı denemesi yapıldı. Lütfen kısa süre sonra tekrar deneyin.",
       },
+      { status: 429 },
       {
-        status: 429,
-        headers: {
-          ...rateLimitHeaders(limit),
-          "Retry-After": String(limit.retryAfterSeconds),
-        },
+        ...rateLimitHeaders(limit),
+        "Retry-After": String(limit.retryAfterSeconds),
       }
     );
   }
 
-  if (isRequestBodyTooLarge(req, MAX_BODY_BYTES)) {
-    securityLog(req, "modbus_ping_body_too_large");
+  const parsed = await parseJsonBody(req, MAX_BODY_BYTES);
+  if (!parsed.ok) {
+    securityLog(req, "modbus_ping_invalid_request", {
+      status: parsed.status,
+      reason: parsed.error,
+    });
 
-    return NextResponse.json(
-      { success: false, error: "İstek boyutu çok büyük." },
-      { status: 413 }
+    return jsonResponse(
+      { success: false, error: parsed.error },
+      { status: parsed.status },
+      rateLimitHeaders(limit)
     );
   }
 
-  let body: unknown;
-
-  try {
-    body = await req.json();
-  } catch {
-    securityLog(req, "modbus_ping_invalid_json");
-
-    return NextResponse.json(
-      { success: false, error: "Geçersiz JSON." },
-      { status: 400 }
-    );
-  }
-
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
+  if (!parsed.body || typeof parsed.body !== "object" || Array.isArray(parsed.body)) {
     securityLog(req, "modbus_ping_invalid_body");
 
-    return NextResponse.json(
+    return jsonResponse(
       { success: false, error: "Geçersiz istek gövdesi." },
-      { status: 400 }
+      { status: 400 },
+      rateLimitHeaders(limit)
     );
   }
 
-  const { ip, port } = body as Record<string, unknown>;
+  const { ip, port } = parsed.body as Record<string, unknown>;
   const target = validateModbusTarget(ip, port);
 
   if (!target.ok) {
     securityLog(req, "modbus_ping_rejected", {
       targetIp: typeof ip === "string" ? maskIp(ip.trim()) : undefined,
-      targetPort: typeof port === "number" || typeof port === "string" ? String(port) : undefined,
+      targetPort:
+        typeof port === "number" || typeof port === "string"
+          ? String(port)
+          : undefined,
       reason: target.error,
     });
 
-    return NextResponse.json(
+    return jsonResponse(
       { success: false, error: target.error },
-      { status: 400 }
+      { status: 400 },
+      rateLimitHeaders(limit)
     );
   }
 
@@ -114,8 +127,6 @@ export async function POST(req: Request): Promise<Response> {
       });
 
       socket.once("error", () => {
-        // İç ağ/topoloji ayrıntılarını kullanıcıya sızdırmamak için
-        // Node.js hata mesajını doğrudan döndürmüyoruz.
         finish({ success: false, error: "Bağlantı kurulamadı." });
       });
 
@@ -132,10 +143,5 @@ export async function POST(req: Request): Promise<Response> {
     targetPort: target.port,
   });
 
-  return NextResponse.json(result, {
-    headers: {
-      ...rateLimitHeaders(limit),
-      "Cache-Control": "no-store",
-    },
-  });
+  return jsonResponse(result, {}, rateLimitHeaders(limit));
 }

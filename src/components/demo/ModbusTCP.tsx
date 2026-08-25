@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import TrendChart from "./TrendChart";
+import type { Locale } from "@/lib/i18n";
 
 interface RegisterRow {
   index: number;
@@ -29,7 +30,9 @@ type ReadRequestResult =
   | "stale"
   | "skipped";
 
-export default function ModbusTCP() {
+export default function ModbusTCP({ locale = "tr" }: { locale?: Locale }) {
+  const en = locale === "en";
+  const tx = (tr: string, english: string) => (en ? english : tr);
   const [connected, setConnected] = useState(false);
   const [ipAddress, setIpAddress] = useState("192.168.1.100");
   const [port, setPort] = useState(502);
@@ -78,6 +81,7 @@ export default function ModbusTCP() {
   const settingsLocked = step !== "idle";
   const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const requestInFlightRef = useRef(false);
+  const requestAbortRef = useRef<AbortController | null>(null);
   const requestVersionRef = useRef(0);
   const lastErrorRef = useRef<string | null>(null);
   const pollingRef = useRef(false);
@@ -91,6 +95,8 @@ export default function ModbusTCP() {
         scanIntervalRef.current = null;
       }
 
+      requestAbortRef.current?.abort();
+      requestAbortRef.current = null;
       requestVersionRef.current += 1;
       pollingRef.current = false;
     };
@@ -115,22 +121,22 @@ export default function ModbusTCP() {
       const json = await res.json();
 
       if (!json.success) {
-        setLog((p) => [...p, `❌ Bağlantı kurulamadı: ${json.error}`]);
+        setLog((p) => [...p, `${tx("❌ Bağlantı kurulamadı: ", "❌ Connection failed: ")}${en ? "Device did not respond." : json.error}`]);
         setConnectionStatus("error");
-        setConnectionMessage("Bağlantı yok. Cihaz yanıt vermedi.");
+        setConnectionMessage(tx("Bağlantı yok. Cihaz yanıt vermedi.", "No connection. The device did not respond."));
         return;
       }
 
       setConnected(true);
-      setLog((p) => [...p, `✅ Modbus TCP bağlantısı kuruldu (${ipAddress}:${port})`]);
+      setLog((p) => [...p, `✅ ${tx("Modbus TCP bağlantısı kuruldu", "Modbus TCP connection established")} (${ipAddress}:${port})`]);
 
       setConnectionStatus("success");
-      setConnectionMessage("Bağlantı başarılı!");
+      setConnectionMessage(tx("Bağlantı başarılı!", "Connection successful!"));
 
     } catch (err: unknown) {
-      setLog((p) => [...p, "❌ Bağlantı hatası: " + getErrorMessage(err)]);
+      setLog((p) => [...p, tx("❌ Bağlantı hatası: ", "❌ Connection error: ") + getErrorMessage(err)]);
       setConnectionStatus("error");
-      setConnectionMessage("Bağlantı hatası oluştu.");
+      setConnectionMessage(tx("Bağlantı hatası oluştu.", "A connection error occurred."));
     }
   }
 
@@ -238,6 +244,8 @@ function parseBits(
       scanIntervalRef.current = null;
     }
 
+    requestAbortRef.current?.abort();
+    requestAbortRef.current = null;
     requestVersionRef.current += 1;
 
     setConnected(false);
@@ -250,12 +258,13 @@ function parseBits(
     setHasError(false);
     setRegisters([]);
     setHistory([]);
+    setSelectedIndex(null);
     setStep("idle");
 
     lastErrorRef.current = null;
     wasDisconnectedRef.current = false;
 
-    setLog((p) => [...p.slice(-99), "🔴 Bağlantı sonlandırıldı"]);
+    setLog((p) => [...p.slice(-99), tx("🔴 Bağlantı sonlandırıldı", "🔴 Connection closed")]);
   }
 
   /* ---------------- OKUMA GÖNDERİMİ ---------------- */
@@ -270,11 +279,14 @@ function parseBits(
     }
 
     requestInFlightRef.current = true;
+    const controller = new AbortController();
+    requestAbortRef.current = controller;
 
     try {
       const res = await fetch("/api/modbus/read", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           ip: ipAddress,
           port,
@@ -298,7 +310,7 @@ function parseBits(
         if (wasDisconnectedRef.current) {
           setLog((p) => [
             ...p.slice(-99),
-            "🔄 Bağlantı yeniden sağlandı."
+            tx("🔄 Bağlantı yeniden sağlandı.", "🔄 Connection restored.")
           ]);
 
           wasDisconnectedRef.current = false;
@@ -308,13 +320,13 @@ function parseBits(
 
         if (func === 1 || func === 2) {
           if (!Array.isArray(json.bits)) {
-            throw new Error("Geçersiz bit cevabı alındı.");
+            throw new Error(tx("Geçersiz bit cevabı alındı.", "Invalid bit response received."));
           }
 
           regs = parseBits(json.bits, address, quantity);
         } else {
           if (!Array.isArray(json.raw)) {
-            throw new Error("Geçersiz register cevabı alındı.");
+            throw new Error(tx("Geçersiz register cevabı alındı.", "Invalid register response received."));
           }
 
           regs = parseRegisters(json.raw, address);
@@ -352,11 +364,10 @@ function parseBits(
           4: "Slave Device Failure",
         };
 
-        const desc =
-          json.error ||
-          `Modbus Exception (Code ${errorCode}) - ${
-            errorMap[errorCode] || "Unknown Exception"
-          }`;
+        const desc = en
+          ? `Modbus Exception (Code ${errorCode}) - ${errorMap[errorCode] || "Unknown Exception"}`
+          : json.error ||
+            `Modbus Exception (Code ${errorCode}) - ${errorMap[errorCode] || "Unknown Exception"}`;
 
         if (lastErrorRef.current !== desc) {
           setLog((p) => [
@@ -387,7 +398,7 @@ function parseBits(
       if (!wasDisconnectedRef.current) {
         setLog((p) => [
           ...p.slice(-99),
-          "⛔ Bağlantı koptu: Cihazdan veri alınamadı. Ağ bağlantısını ve cihazı kontrol edin."
+          tx("⛔ Bağlantı koptu: Cihazdan veri alınamadı. Ağ bağlantısını ve cihazı kontrol edin.", "⛔ Connection lost: No data received from the device. Check the network connection and device.")
         ]);
 
         wasDisconnectedRef.current = true;
@@ -406,7 +417,14 @@ function parseBits(
 
       return "connection_error";
 
-    } catch {
+    } catch (error: unknown) {
+
+      if (
+        controller.signal.aborted ||
+        (error instanceof DOMException && error.name === "AbortError")
+      ) {
+        return "stale";
+      }
 
       if (version !== requestVersionRef.current) {
         return "stale";
@@ -415,7 +433,7 @@ function parseBits(
       if (!wasDisconnectedRef.current) {
         setLog((p) => [
           ...p.slice(-99),
-          "⛔ Bağlantı koptu: Cihazdan veri alınamadı. Ağ bağlantısını ve cihazı kontrol edin."
+          tx("⛔ Bağlantı koptu: Cihazdan veri alınamadı. Ağ bağlantısını ve cihazı kontrol edin.", "⛔ Connection lost: No data received from the device. Check the network connection and device.")
         ]);
 
         wasDisconnectedRef.current = true;
@@ -435,14 +453,58 @@ function parseBits(
       return "connection_error";
 
     } finally {
+      if (requestAbortRef.current === controller) {
+        requestAbortRef.current = null;
+      }
       requestInFlightRef.current = false;
     }
   }
 
   /* ---------------- OKUMAYI BAŞLAT / KAYIT / DURDUR ---------------- */
 
+  function validateReadSettings(): string | null {
+    if (!Number.isInteger(slaveId) || slaveId < 1 || slaveId > 247) {
+      return tx(
+        "Slave ID 1-247 arasında olmalıdır.",
+        "Slave ID must be between 1 and 247."
+      );
+    }
+
+    if (!Number.isInteger(address) || address < 0 || address > 65535) {
+      return tx(
+        "Adres 0-65535 arasında tam sayı olmalıdır.",
+        "Address must be an integer between 0 and 65535."
+      );
+    }
+
+    const maxQuantity = isBitFunction ? 2000 : 125;
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > maxQuantity) {
+      return tx(
+        `Miktar bu fonksiyon için 1-${maxQuantity} arasında olmalıdır.`,
+        `Quantity must be between 1 and ${maxQuantity} for this function.`
+      );
+    }
+
+    if (address + quantity - 1 > 65535) {
+      return tx(
+        "Adres + miktar Modbus adres alanını aşıyor.",
+        "Address + quantity exceeds the Modbus address range."
+      );
+    }
+
+    return null;
+  }
+
   async function startReading() {
     try {
+      const validationError = validateReadSettings();
+      if (validationError) {
+        setLog((p) => [...p.slice(-99), `❌ ${validationError}`]);
+        setHasError(true);
+        setStep("idle");
+        return;
+      }
+
       if (scanIntervalRef.current) {
         clearInterval(scanIntervalRef.current);
         scanIntervalRef.current = null;
@@ -453,6 +515,7 @@ function parseBits(
 
       setRegisters([]);
       setHistory([]);
+      setSelectedIndex(null);
       setHasError(false);
       setPolling(false);
       pollingRef.current = false;
@@ -477,7 +540,7 @@ function parseBits(
         setScanRate(500);
         setLog((p) => [
           ...p.slice(-99),
-          "⚠️ Güvenlik ve sunucu yükü nedeniyle minimum scan rate 500 ms olarak uygulanır."
+          tx("⚠️ Güvenlik ve sunucu yükü nedeniyle minimum scan rate 500 ms olarak uygulanır.", "⚠️ The minimum scan rate is limited to 500 ms for security and server load protection.")
         ]);
       }
 
@@ -507,7 +570,7 @@ function parseBits(
       setStep("idle");
       setLog((p) => [
         ...p.slice(-99),
-        "❌ Okuma başlatma hatası: " + getErrorMessage(err)
+        tx("❌ Okuma başlatma hatası: ", "❌ Failed to start reading: ") + getErrorMessage(err)
       ]);
     }
   }
@@ -524,7 +587,7 @@ function parseBits(
 
     setLog((p) => [
       ...p.slice(-99),
-      "▶️ Kayıt başladı"
+      tx("▶️ Kayıt başladı", "▶️ Recording started")
     ]);
 
     const version = requestVersionRef.current;
@@ -548,7 +611,7 @@ function parseBits(
 
     setLog((p) => [
       ...p.slice(-99),
-      "⏹ Kayıt durduruldu; canlı okuma devam ediyor."
+      tx("⏹ Kayıt durduruldu; canlı okuma devam ediyor.", "⏹ Recording stopped; live reading continues.")
     ]);
 
     setStep("confirmed");
@@ -567,6 +630,8 @@ function parseBits(
       scanIntervalRef.current = null;
     }
 
+    requestAbortRef.current?.abort();
+    requestAbortRef.current = null;
     requestVersionRef.current += 1;
 
     setPolling(false);
@@ -575,9 +640,12 @@ function parseBits(
 
     setLog((p) => [
       ...p.slice(-99),
-      "⏹ Canlı okuma durduruldu."
+      tx("⏹ Canlı okuma durduruldu.", "⏹ Live reading stopped.")
     ]);
   }
+
+  const selectedRegister =
+    selectedIndex !== null ? registers[selectedIndex] : undefined;
 
   /* ---------------- UI ---------------- */
   return (
@@ -586,10 +654,10 @@ function parseBits(
 
       {!connected ? (
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Connection Settings</h3>
+          <h3 className="text-lg font-semibold">{en ? "Connection Settings" : "Bağlantı Ayarları"}</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label>IP Address</label>
+              <label>{en ? "IP Address" : "IP Adresi"}</label>
               <input
                 type="text"
                 value={ipAddress}
@@ -611,7 +679,7 @@ function parseBits(
             onClick={connectTCP}
             className="px-3 py-2 rounded bg-brand-navy text-white hover:bg-brand-navy/90"
           >
-            Cihaza Bağlan
+            {en ? "Connect to Device" : "Cihaza Bağlan"}
           </button>
 
 	  {/* 🆕 BAĞLANTI DURUM MESAJI BURADA GÖRÜNÜR */}
@@ -631,13 +699,13 @@ function parseBits(
         <div className="space-y-4 relative">
           <button
             onClick={disconnectTCP}
-            title="Bağlantıyı kes"
+            title={en ? "Disconnect" : "Bağlantıyı kes"}
             className="absolute top-0 right-0 m-2 px-2 py-1 text-sm text-gray-500 hover:text-red-600 border rounded hover:bg-red-50"
           >
             ✕
           </button>
 
-          <h3 className="text-lg font-semibold">Read/Write Definition</h3>
+          <h3 className="text-lg font-semibold">{en ? "Read Definition" : "Okuma Tanımı"}</h3>
           <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
             <div>
               <label>Slave ID</label>
@@ -652,7 +720,7 @@ function parseBits(
               />
             </div>
             <div>
-              <label>Function</label>
+              <label>{en ? "Function" : "Fonksiyon"}</label>
               <select
                 value={func}
                 onChange={(e) => setFunc(Number(e.target.value))}
@@ -666,7 +734,7 @@ function parseBits(
               </select>
             </div>
             <div>
-              <label>Address</label>
+              <label>{en ? "Address" : "Adres"}</label>
               <input
                 type="number"
                 value={address}
@@ -676,7 +744,7 @@ function parseBits(
               />
             </div>
             <div>
-              <label>Quantity</label>
+              <label>{en ? "Quantity" : "Miktar"}</label>
               <input
                 type="number"
                 value={quantity}
@@ -686,7 +754,7 @@ function parseBits(
               />
             </div>
             <div>
-              <label>Data Type</label>
+              <label>{en ? "Data Type" : "Veri Tipi"}</label>
               <select
                 value={dataType}
                 onChange={(e) => setDataType(e.target.value as DataType)}
@@ -734,28 +802,28 @@ function parseBits(
                 onClick={startReading}
                 className="px-3 py-2 rounded text-white transition bg-green-600 hover:bg-green-700"
               >
-                Okumayı Başlat
+                {en ? "Start Reading" : "Okumayı Başlat"}
               </button>
             )}
 
             {step === "confirmed" && !hasError && (
               <>
                 <span className="px-3 py-2 rounded bg-green-50 text-green-700 border border-green-200 text-sm font-medium">
-                  🟢 Canlı Okuma Aktif
+                  🟢 {en ? "Live Reading Active" : "Canlı Okuma Aktif"}
                 </span>
 
                 <button
                   onClick={startPolling}
                   className="px-3 py-2 rounded text-white bg-purple-600 hover:bg-purple-700"
                 >
-                  Kayıt Başlat
+                  {en ? "Start Recording" : "Kayıt Başlat"}
                 </button>
 
                 <button
                   onClick={stopReading}
                   className="px-3 py-2 rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-100"
                 >
-                  Okumayı Durdur
+                  {en ? "Stop Reading" : "Okumayı Durdur"}
                 </button>
               </>
             )}
@@ -763,14 +831,14 @@ function parseBits(
             {step === "recording" && (
               <>
                 <span className="px-3 py-2 rounded bg-red-50 text-red-700 border border-red-200 text-sm font-medium">
-                  🔴 Kayıt Yapılıyor
+                  🔴 {en ? "Recording" : "Kayıt Yapılıyor"}
                 </span>
 
                 <button
                   onClick={stopPolling}
                   className="px-3 py-2 rounded bg-red-600 text-white hover:bg-red-700"
                 >
-                  Kaydı Durdur
+                  {en ? "Stop Recording" : "Kaydı Durdur"}
                 </button>
               </>
             )}
@@ -782,7 +850,7 @@ function parseBits(
               onClick={() => setLog([])}
               className="absolute top-2 right-5 px-2 py-1 text-xs bg-white text-gray-600 border rounded hover:bg-gray-100"
             >
-              Temizle
+              {en ? "Clear" : "Temizle"}
             </button>
             <div
               ref={logContainerRef}
@@ -841,7 +909,7 @@ function parseBits(
                     </th>
                     {Array.from({ length: 11 }).map((_, i) => (
                       <th key={i} className="border px-2 py-1 whitespace-nowrap">
-                        {i === 0 ? "Başlangıç" : `Sorgu ${i}`}
+                        {i === 0 ? (en ? "Start" : "Başlangıç") : `${en ? "Query" : "Sorgu"} ${i}`}
                       </th>
                     ))}
                   </tr>
@@ -883,14 +951,14 @@ function parseBits(
 
           {/* TREND */}
           <div className="mt-6 space-y-6">
-            {selectedIndex === null ? (
+            {!selectedRegister ? (
               <div>
                 <h3 className="text-lg font-semibold text-brand-navy mb-2">
                   📊 {func === 1
-                    ? "Tüm Coil Trendleri"
+                    ? (en ? "All Coil Trends" : "Tüm Coil Trendleri")
                     : func === 2
-                    ? "Tüm Discrete Input Trendleri"
-                    : "Tüm Register Trendleri"}
+                    ? (en ? "All Discrete Input Trends" : "Tüm Discrete Input Trendleri")
+                    : (en ? "All Register Trends" : "Tüm Register Trendleri")}
                 </h3>
                 <div className="grid md:grid-cols-2 gap-6">
                   {registers.map((r, idx) =>
@@ -901,6 +969,7 @@ function parseBits(
                         data={history[idx]}
                         polling={polling}
                         scanRate={scanRate}
+                        locale={locale}
                       />
                     ) : null
                   )}
@@ -911,23 +980,24 @@ function parseBits(
                 <div className="flex justify-between mb-2">
                   <h3 className="text-lg font-semibold text-brand-navy">
                     {func === 1
-                      ? `Coil ${registers[selectedIndex].index} Trend`
+                      ? `Coil ${selectedRegister.index} Trend`
                       : func === 2
-                      ? `Discrete Input ${registers[selectedIndex].index} Trend`
-                      : `Register ${registers[selectedIndex].index} Trend`}
+                      ? `Discrete Input ${selectedRegister.index} Trend`
+                      : `Register ${selectedRegister.index} Trend`}
                   </h3>
                   <button
                     onClick={() => setSelectedIndex(null)}
                     className="text-sm text-blue-600 hover:underline"
                   >
-                    ← Hepsini Göster
+                    ← {en ? "Show All" : "Hepsini Göster"}
                   </button>
                 </div>
                 <TrendChart
-                  label={registers[selectedIndex].index}
-                  data={history[selectedIndex]}
+                  label={selectedRegister.index}
+                  data={history[selectedIndex ?? 0]}
                   polling={polling}
                   scanRate={scanRate}
+                  locale={locale}
                 />
               </div>
             )}

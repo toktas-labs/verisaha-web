@@ -1,5 +1,5 @@
 declare module "jsmodbus" {
-  import type { Socket } from "net";
+  import type { Socket } from "node:net";
 
   interface ModbusResponseBody {
     valuesAsArray?: unknown[];
