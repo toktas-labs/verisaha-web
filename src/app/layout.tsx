@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
+import ModbusDemoCTA from "@/components/modbus-demo-cta";
 import { ThemeProvider } from "@/components/theme-provider";
 import HtmlLangSync from "@/components/html-lang-sync";
 
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="flex min-h-dvh flex-col">
             <Navbar />
             <div className="flex-1">{children}</div>
+            <ModbusDemoCTA />
             <Footer />
           </div>
         </ThemeProvider>

@@ -3,7 +3,7 @@ import type { Locale } from "@/lib/i18n";
 export function StatsStrip({ locale = "tr" }: { locale?: Locale }) {
   const en = locale === "en";
   const stats = [
-    { k: "20+", v: en ? "Remote Monitoring Applications" : "Uzaktan İzleme Yazılımı" },
+    { k: "30+", v: en ? "Remote Monitoring Applications" : "Uzaktan İzleme Yazılımı" },
     { k: "7/24", v: en ? "Live Data Monitoring" : "Canlı Veri Takibi" },
     { k: en ? "Industry 4.0" : "Endüstri 4.0", v: en ? "Digitalization Solutions" : "Dijitalleşme Çözümleri" },
   ];
