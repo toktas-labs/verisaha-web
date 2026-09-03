@@ -5,6 +5,7 @@ import Footer from "@/components/footer";
 import ModbusDemoCTA from "@/components/modbus-demo-cta";
 import { ThemeProvider } from "@/components/theme-provider";
 import HtmlLangSync from "@/components/html-lang-sync";
+import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://verisaha.com"),
@@ -18,6 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-dvh bg-background text-foreground font-sans">
         <ThemeProvider>
           <HtmlLangSync />
+
           <div className="flex min-h-dvh flex-col">
             <Navbar />
             <div className="flex-1">{children}</div>
@@ -25,6 +27,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Footer />
           </div>
         </ThemeProvider>
+
+        <Analytics />
       </body>
     </html>
   );
