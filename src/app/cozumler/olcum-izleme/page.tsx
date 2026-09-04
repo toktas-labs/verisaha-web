@@ -1,3 +1,4 @@
+import ReportImageToggle from "@/components/report-image-toggle";
 import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -99,36 +100,40 @@ export default function MeasurementMonitoringPage() {
               <li>Limit/Alarm eşikleri ve bildirim</li>
             </ul>
           </div>
-	  <Dialog>
-	  <DialogTrigger asChild>
-	    <div className="relative mt-4 aspect-[4/3] w-full overflow-hidden rounded-lg border cursor-pointer">
-	      <Image
-	        src="/olcum/parametre.jpg"
-	        alt="Parametre bazlı izleme"
-	        fill
-	        className="object-cover"
-	      />
-	      {/* Sağ altta büyüteç ikonu */}
-	      <div className="absolute bottom-2 right-2 bg-white/80 rounded-full p-2 shadow">
-	        <Lucide.Search className="h-5 w-5 text-brand-navy" />
-	      </div>
-	    </div>
-	  </DialogTrigger>
+          <Dialog>
+            <DialogTrigger asChild>
+              <div className="relative mt-4 aspect-[4/3] w-full overflow-hidden rounded-lg border cursor-pointer">
+                <Image
+                  src="/olcum/parametre.jpg"
+                  alt="Parametre bazlı izleme"
+                  fill
+                  className="object-cover"
+                />
 
-	  <DialogContent className="max-w-4xl [&>button:not(.custom-close)]:hidden">
-	    <DialogTitle className="sr-only">Parametre Bazlı İzleme</DialogTitle>
-	    <DialogClose className="custom-close absolute  top-3 right-3 rounded-full bg-white/90 hover:bg-white p-2 shadow">
-		<Lucide.X className="h-5 w-5 text-brand-navy" />
-	    </DialogClose>
-	    <Image
-	      src="/olcum/parametre.jpg"
-	      alt="Parametre bazlı izleme büyük"
-	      width={1200}
-	      height={900}
-	      className="w-full h-auto rounded-lg"
-	    />
-	  </DialogContent>
-	</Dialog>
+                <div className="absolute bottom-2 right-2 rounded-full bg-white/80 p-2 shadow">
+                  <Lucide.Search className="h-5 w-5 text-brand-navy" />
+                </div>
+              </div>
+            </DialogTrigger>
+
+            <DialogContent className="max-w-4xl [&>button:not(.custom-close)]:hidden">
+              <DialogTitle className="sr-only">
+                Parametre Bazlı İzleme
+              </DialogTitle>
+
+              <DialogClose className="custom-close absolute top-3 right-3 rounded-full bg-white/90 p-2 shadow hover:bg-white">
+                <Lucide.X className="h-5 w-5 text-brand-navy" />
+              </DialogClose>
+
+              <Image
+                src="/olcum/parametre.jpg"
+                alt="Parametre bazlı izleme büyük"
+                width={1200}
+                height={900}
+                className="h-auto w-full rounded-lg"
+              />
+            </DialogContent>
+          </Dialog>
         </CardContent>
       </Card>
 
@@ -205,36 +210,7 @@ export default function MeasurementMonitoringPage() {
               <li>PDF / Excel dışa aktarım</li>
             </ul>
           </div>
-	  <Dialog>
-	  <DialogTrigger asChild>
-	    <div className="relative mt-4 aspect-[4/3] w-full overflow-hidden rounded-lg border cursor-pointer">
-	      <Image
-                src="/olcum/raporlama.jpg"
-                alt="Raporlama"
-	        fill
-	        className="object-cover"
-	      />
-	      {/* Sağ altta büyüteç ikonu */}
-	      <div className="absolute bottom-2 right-2 bg-white/80 rounded-full p-2 shadow">
-	        <Lucide.Search className="h-5 w-5 text-brand-navy" />
-	      </div>
-	    </div>
-	  </DialogTrigger>
-
-	  <DialogContent className="max-w-4xl [&>button:not(.custom-close)]:hidden">
-	    <DialogTitle className="sr-only">Raporlama</DialogTitle>
-	    <DialogClose className="custom-close absolute  top-3 right-3 rounded-full bg-white/90 hover:bg-white p-2 shadow">
-		<Lucide.X className="h-5 w-5 text-brand-navy" />
-	    </DialogClose>
-	    <Image
-              src="/olcum/raporlama.jpg"
-              alt="Raporlama"
-	      width={1200}
-	      height={900}
-	      className="w-full h-auto rounded-lg"
-	    />
-	  </DialogContent>
-	</Dialog>
+          <ReportImageToggle />
         </CardContent>
       </Card>
 
